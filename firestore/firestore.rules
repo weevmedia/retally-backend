@@ -1,0 +1,179 @@
+rules_version = '2';
+
+// ReTally security rules (schema v1 — see SCHEMA.md).
+// Principle: a signed-in user owns everything under /users/{uid}; catalogs are public-read;
+// anything derived (accounts, patterns, insights, catalogs) is written only by Cloud Functions
+// through the Admin SDK, which bypasses these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function hasOnly(allowed) {
+      return incoming().keys().hasOnly(allowed);
+    }
+    function isMoney(v) {
+      return v is number && v >= -100000 && v <= 100000;
+    }
+    function isIso4217(v) {
+      return v is string && v.size() == 3;
+    }
+    function ts(v) {
+      return v is timestamp;
+    }
+    // Admin console (retally-webapp): admin custom claim set by functions/scripts/set-admin.mjs.
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    // ---------- schema registry ----------
+    match /_schema/{version} {
+      allow read: if true;
+      allow write: if false; // provision.mjs only
+    }
+
+    // ---------- user profile ----------
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && hasOnly(['displayName', 'email', 'photoUrl', 'locale', 'currency', 'timeZone',
+                    'settings', 'stats', 'createdAt', 'updatedAt', 'schemaVersion'])
+        && incoming().locale is string
+        && isIso4217(incoming().currency)
+        && incoming().timeZone is string
+        && incoming().schemaVersion == 1
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      // Clients may not touch stats — functions maintain them.
+      allow update: if isOwner(uid)
+        && !incoming().diff(resource.data).affectedKeys().hasAny(['stats', 'createdAt', 'schemaVersion'])
+        && incoming().updatedAt == request.time;
+
+      allow delete: if false; // account deletion goes through the callable function
+
+      // ---------- receipts ----------
+      match /receipts/{receiptId} {
+        allow read: if isOwner(uid);
+
+        allow create: if isOwner(uid) && validReceipt();
+        allow update: if isOwner(uid) && validReceipt()
+          && !incoming().diff(resource.data).affectedKeys().hasAny(['createdAt', 'embedding']);
+        // Soft delete only (set deletedAt); the purge job hard-deletes after 30 days.
+        allow delete: if false;
+
+        function validReceipt() {
+          let d = incoming();
+          return d.storeName is string && d.storeName.size() > 0 && d.storeName.size() <= 120
+            && d.merchantNameNormalized is string
+            && ts(d.purchaseDate)
+            && d.purchaseDateLocal is string && d.purchaseDateLocal.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && isIso4217(d.currency)
+            && isMoney(d.total) && isMoney(d.subtotal) && isMoney(d.tax)
+            && d.lineItemCount is int && d.lineItemCount >= 0 && d.lineItemCount <= 500
+            && d.paymentMethod in ['card', 'cash', 'mobile', 'unknown']
+            && d.analysis is map
+            && d.analysis.duplicateCount is int
+            && isMoney(d.analysis.overchargeAmount)
+            && d.ocr is map
+            && d.ocr.piiScrubbed == true                    // never store unscrubbed OCR
+            && d.ocr.rawText is string && d.ocr.rawText.size() <= 20000
+            && !d.ocr.rawText.matches('.*[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}.*') // no card PANs
+            && d.source in ['scan', 'manual', 'import']
+            && d.schemaVersion == 1
+            && ts(d.updatedAt);
+        }
+
+        // ---------- line items ----------
+        match /lineItems/{lineId} {
+          allow read: if isOwner(uid);
+
+          allow create, update: if isOwner(uid) && validLineItem();
+          allow delete: if isOwner(uid); // hard delete is fine here; the receipt is the unit of soft-delete
+
+          function validLineItem() {
+            let d = incoming();
+            return d.uid == uid                                // denormalized owner must match path
+              && d.receiptId == receiptId
+              && ts(d.purchaseDate)
+              && d.position is int && d.position >= 0
+              && d.rawDescription is string && d.rawDescription.size() > 0 && d.rawDescription.size() <= 200
+              && !d.rawDescription.matches('.*[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}.*')
+              && d.quantity is number && d.quantity > 0 && d.quantity <= 1000
+              && isMoney(d.unitPrice) && isMoney(d.lineTotal) && isMoney(d.discount)
+              && d.unit in ['each', 'kg', 'lb', 'l', 'oz', 'pack']
+              && d.isDuplicate is bool
+              && d.userCorrected is bool
+              && isIso4217(d.currency)
+              // productId / normalizedName / category / embedding are function-written but the
+              // client may pre-fill category and normalizedName; it may never write embedding.
+              && !('embedding' in d);
+          }
+        }
+      }
+
+      // ---------- derived, read-only for the client ----------
+      match /purchasePatterns/{productId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /insights/{insightId} {
+        allow read: if isOwner(uid);
+        // The only client mutation is feedback / status.
+        allow update: if isOwner(uid)
+          && incoming().diff(resource.data).affectedKeys().hasOnly(['status', 'feedback', 'updatedAt'])
+          && incoming().status in ['new', 'seen', 'dismissed', 'acted']
+          && (incoming().feedback == null || incoming().feedback in ['up', 'down']);
+        allow create, delete: if false;
+      }
+    }
+
+    // ---------- account (billing / entitlements) ----------
+    match /accounts/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false; // functions only
+    }
+
+    // ---------- public catalogs ----------
+    match /merchants/{merchantId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // ---------- admin console ----------
+    // Store master list: read by the console; written only by the admin Cloud Functions.
+    match /store_icons/{key} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    // Item categories: read by the console; written only by adminSaveCategories (the app reads
+    // them through the getCategories function, not directly).
+    match /config/itemCategories {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /adminAudit/{entryId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

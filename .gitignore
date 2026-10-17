@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+functions/lib/
+*.log
+.env
+.env.*
+!.env.example
+.secret.local
+.runtimeconfig.json
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+*.json.key

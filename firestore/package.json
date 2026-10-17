@@ -1,0 +1,19 @@
+{
+  "name": "retally-firestore",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ReTally Firestore schema, rules, indexes and provisioning",
+  "scripts": {
+    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "deploy:indexes": "firebase deploy --only firestore:indexes",
+    "deploy": "firebase deploy --only firestore,storage",
+    "provision": "node scripts/provision.mjs",
+    "provision:demo": "node scripts/provision.mjs --demo",
+    "emulators": "firebase emulators:start --only auth,firestore,storage",
+    "provision:emulator": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/provision.mjs --demo"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

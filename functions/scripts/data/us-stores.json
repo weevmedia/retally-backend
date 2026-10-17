@@ -1,0 +1,987 @@
+[
+  {
+    "name": "Walmart",
+    "domain": "walmart.com",
+    "category": "department",
+    "aliases": [
+      "WAL-MART",
+      "WAL*MART",
+      "WALMART SUPERCENTER",
+      "WM SUPERCENTER",
+      "WALMART NEIGHBORHOOD MARKET"
+    ]
+  },
+  {
+    "name": "Target",
+    "domain": "target.com",
+    "category": "department",
+    "aliases": [
+      "TARGET T-",
+      "SUPER TARGET"
+    ]
+  },
+  {
+    "name": "Costco",
+    "domain": "costco.com",
+    "category": "warehouse",
+    "aliases": [
+      "COSTCO WHOLESALE",
+      "COSTCO WHSE"
+    ]
+  },
+  {
+    "name": "Sam's Club",
+    "domain": "samsclub.com",
+    "category": "warehouse",
+    "aliases": [
+      "SAMS CLUB",
+      "SAM'S CLUB #"
+    ]
+  },
+  {
+    "name": "BJ's Wholesale Club",
+    "domain": "bjs.com",
+    "category": "warehouse",
+    "aliases": [
+      "BJS WHOLESALE",
+      "BJ'S"
+    ]
+  },
+  {
+    "name": "Kroger",
+    "domain": "kroger.com",
+    "category": "grocery",
+    "aliases": [
+      "KROGER MARKETPLACE"
+    ]
+  },
+  {
+    "name": "Albertsons",
+    "domain": "albertsons.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Safeway",
+    "domain": "safeway.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Publix",
+    "domain": "publix.com",
+    "category": "grocery",
+    "aliases": [
+      "PUBLIX SUPER MARKETS"
+    ]
+  },
+  {
+    "name": "H-E-B",
+    "domain": "heb.com",
+    "category": "grocery",
+    "aliases": [
+      "HEB",
+      "H E B"
+    ]
+  },
+  {
+    "name": "Meijer",
+    "domain": "meijer.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Whole Foods Market",
+    "domain": "wholefoodsmarket.com",
+    "category": "grocery",
+    "aliases": [
+      "WHOLE FOODS",
+      "WFM"
+    ]
+  },
+  {
+    "name": "Trader Joe's",
+    "domain": "traderjoes.com",
+    "category": "grocery",
+    "aliases": [
+      "TRADER JOES"
+    ]
+  },
+  {
+    "name": "Aldi",
+    "domain": "aldi.us",
+    "category": "grocery",
+    "aliases": [
+      "ALDI INC"
+    ]
+  },
+  {
+    "name": "Lidl",
+    "domain": "lidl.com",
+    "category": "grocery",
+    "aliases": [
+      "LIDL US"
+    ]
+  },
+  {
+    "name": "Food Lion",
+    "domain": "foodlion.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Giant Food",
+    "domain": "giantfood.com",
+    "category": "grocery",
+    "aliases": [
+      "GIANT"
+    ]
+  },
+  {
+    "name": "Giant Eagle",
+    "domain": "gianteagle.com",
+    "category": "grocery",
+    "aliases": [
+      "GETGO"
+    ]
+  },
+  {
+    "name": "Stop & Shop",
+    "domain": "stopandshop.com",
+    "category": "grocery",
+    "aliases": [
+      "STOP AND SHOP"
+    ]
+  },
+  {
+    "name": "Hannaford",
+    "domain": "hannaford.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "ShopRite",
+    "domain": "shoprite.com",
+    "category": "grocery",
+    "aliases": [
+      "SHOP RITE"
+    ]
+  },
+  {
+    "name": "Wegmans",
+    "domain": "wegmans.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Harris Teeter",
+    "domain": "harristeeter.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Hy-Vee",
+    "domain": "hy-vee.com",
+    "category": "grocery",
+    "aliases": [
+      "HYVEE"
+    ]
+  },
+  {
+    "name": "Winn-Dixie",
+    "domain": "winndixie.com",
+    "category": "grocery",
+    "aliases": [
+      "WINN DIXIE"
+    ]
+  },
+  {
+    "name": "Sprouts Farmers Market",
+    "domain": "sprouts.com",
+    "category": "grocery",
+    "aliases": [
+      "SPROUTS"
+    ]
+  },
+  {
+    "name": "WinCo Foods",
+    "domain": "wincofoods.com",
+    "category": "grocery",
+    "aliases": [
+      "WINCO"
+    ]
+  },
+  {
+    "name": "Ralphs",
+    "domain": "ralphs.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Fred Meyer",
+    "domain": "fredmeyer.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "King Soopers",
+    "domain": "kingsoopers.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Fry's Food",
+    "domain": "frysfood.com",
+    "category": "grocery",
+    "aliases": [
+      "FRYS FOOD AND DRUG"
+    ]
+  },
+  {
+    "name": "Smith's",
+    "domain": "smithsfoodanddrug.com",
+    "category": "grocery",
+    "aliases": [
+      "SMITHS FOOD AND DRUG"
+    ]
+  },
+  {
+    "name": "Vons",
+    "domain": "vons.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Jewel-Osco",
+    "domain": "jewelosco.com",
+    "category": "grocery",
+    "aliases": [
+      "JEWEL OSCO"
+    ]
+  },
+  {
+    "name": "Acme Markets",
+    "domain": "acmemarkets.com",
+    "category": "grocery",
+    "aliases": [
+      "ACME"
+    ]
+  },
+  {
+    "name": "Shaw's",
+    "domain": "shaws.com",
+    "category": "grocery",
+    "aliases": [
+      "SHAWS"
+    ]
+  },
+  {
+    "name": "Tom Thumb",
+    "domain": "tomthumb.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Randalls",
+    "domain": "randalls.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Food 4 Less",
+    "domain": "food4less.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Piggly Wiggly",
+    "domain": "pigglywiggly.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Ingles",
+    "domain": "ingles-markets.com",
+    "category": "grocery",
+    "aliases": [
+      "INGLES MARKETS"
+    ]
+  },
+  {
+    "name": "Weis Markets",
+    "domain": "weismarkets.com",
+    "category": "grocery",
+    "aliases": [
+      "WEIS"
+    ]
+  },
+  {
+    "name": "Price Chopper",
+    "domain": "pricechopper.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Market Basket",
+    "domain": "shopmarketbasket.com",
+    "category": "grocery",
+    "aliases": [
+      "DEMOULAS MARKET BASKET"
+    ]
+  },
+  {
+    "name": "Save A Lot",
+    "domain": "savealot.com",
+    "category": "grocery",
+    "aliases": [
+      "SAVE-A-LOT"
+    ]
+  },
+  {
+    "name": "Grocery Outlet",
+    "domain": "groceryoutlet.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "The Fresh Market",
+    "domain": "thefreshmarket.com",
+    "category": "grocery",
+    "aliases": [
+      "FRESH MARKET"
+    ]
+  },
+  {
+    "name": "Natural Grocers",
+    "domain": "naturalgrocers.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Stater Bros",
+    "domain": "staterbros.com",
+    "category": "grocery",
+    "aliases": [
+      "STATER BROS MARKETS"
+    ]
+  },
+  {
+    "name": "Raley's",
+    "domain": "raleys.com",
+    "category": "grocery",
+    "aliases": [
+      "RALEYS"
+    ]
+  },
+  {
+    "name": "Dillons",
+    "domain": "dillons.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Schnucks",
+    "domain": "schnucks.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Food City",
+    "domain": "foodcity.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "Brookshire's",
+    "domain": "brookshires.com",
+    "category": "grocery",
+    "aliases": [
+      "BROOKSHIRE BROTHERS"
+    ]
+  },
+  {
+    "name": "Tops",
+    "domain": "topsmarkets.com",
+    "category": "grocery",
+    "aliases": [
+      "TOPS MARKETS",
+      "TOPS FRIENDLY MARKETS"
+    ]
+  },
+  {
+    "name": "Big Y",
+    "domain": "bigy.com",
+    "category": "grocery",
+    "aliases": []
+  },
+  {
+    "name": "99 Ranch Market",
+    "domain": "99ranch.com",
+    "category": "grocery",
+    "aliases": [
+      "99 RANCH"
+    ]
+  },
+  {
+    "name": "H Mart",
+    "domain": "hmart.com",
+    "category": "grocery",
+    "aliases": [
+      "HMART"
+    ]
+  },
+  {
+    "name": "Pick 'n Save",
+    "domain": "picknsave.com",
+    "category": "grocery",
+    "aliases": [
+      "PICK N SAVE"
+    ]
+  },
+  {
+    "name": "Mariano's",
+    "domain": "marianos.com",
+    "category": "grocery",
+    "aliases": [
+      "MARIANOS"
+    ]
+  },
+  {
+    "name": "QFC",
+    "domain": "qfc.com",
+    "category": "grocery",
+    "aliases": [
+      "QUALITY FOOD CENTERS"
+    ]
+  },
+  {
+    "name": "CVS Pharmacy",
+    "domain": "cvs.com",
+    "category": "pharmacy",
+    "aliases": [
+      "CVS",
+      "CVS/PHARMACY"
+    ]
+  },
+  {
+    "name": "Walgreens",
+    "domain": "walgreens.com",
+    "category": "pharmacy",
+    "aliases": [
+      "WALGREEN"
+    ]
+  },
+  {
+    "name": "Kohl's",
+    "domain": "kohls.com",
+    "category": "department",
+    "aliases": [
+      "KOHLS"
+    ]
+  },
+  {
+    "name": "Macy's",
+    "domain": "macys.com",
+    "category": "department",
+    "aliases": [
+      "MACYS"
+    ]
+  },
+  {
+    "name": "Nordstrom",
+    "domain": "nordstrom.com",
+    "category": "department",
+    "aliases": [
+      "NORDSTROM RACK"
+    ]
+  },
+  {
+    "name": "JCPenney",
+    "domain": "jcpenney.com",
+    "category": "department",
+    "aliases": [
+      "JC PENNEY",
+      "J C PENNEY"
+    ]
+  },
+  {
+    "name": "TJ Maxx",
+    "domain": "tjmaxx.com",
+    "category": "department",
+    "aliases": [
+      "T.J. MAXX",
+      "TJMAXX"
+    ]
+  },
+  {
+    "name": "Marshalls",
+    "domain": "marshalls.com",
+    "category": "department",
+    "aliases": []
+  },
+  {
+    "name": "Ross Dress for Less",
+    "domain": "rossstores.com",
+    "category": "department",
+    "aliases": [
+      "ROSS"
+    ]
+  },
+  {
+    "name": "HomeGoods",
+    "domain": "homegoods.com",
+    "category": "department",
+    "aliases": [
+      "HOME GOODS"
+    ]
+  },
+  {
+    "name": "Burlington",
+    "domain": "burlington.com",
+    "category": "department",
+    "aliases": [
+      "BURLINGTON COAT FACTORY"
+    ]
+  },
+  {
+    "name": "Dillard's",
+    "domain": "dillards.com",
+    "category": "department",
+    "aliases": [
+      "DILLARDS"
+    ]
+  },
+  {
+    "name": "Belk",
+    "domain": "belk.com",
+    "category": "department",
+    "aliases": []
+  },
+  {
+    "name": "7-Eleven",
+    "domain": "7-eleven.com",
+    "category": "convenience",
+    "aliases": [
+      "7 ELEVEN",
+      "7ELEVEN"
+    ]
+  },
+  {
+    "name": "Circle K",
+    "domain": "circlek.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Wawa",
+    "domain": "wawa.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Sheetz",
+    "domain": "sheetz.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "QuikTrip",
+    "domain": "quiktrip.com",
+    "category": "convenience",
+    "aliases": [
+      "QT"
+    ]
+  },
+  {
+    "name": "Casey's",
+    "domain": "caseys.com",
+    "category": "convenience",
+    "aliases": [
+      "CASEYS GENERAL STORE"
+    ]
+  },
+  {
+    "name": "Speedway",
+    "domain": "speedway.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Kwik Trip",
+    "domain": "kwiktrip.com",
+    "category": "convenience",
+    "aliases": [
+      "KWIK STAR"
+    ]
+  },
+  {
+    "name": "RaceTrac",
+    "domain": "racetrac.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Buc-ee's",
+    "domain": "buc-ees.com",
+    "category": "convenience",
+    "aliases": [
+      "BUCEES"
+    ]
+  },
+  {
+    "name": "Love's",
+    "domain": "loves.com",
+    "category": "convenience",
+    "aliases": [
+      "LOVES TRAVEL STOP"
+    ]
+  },
+  {
+    "name": "Pilot Flying J",
+    "domain": "pilotflyingj.com",
+    "category": "convenience",
+    "aliases": [
+      "PILOT",
+      "FLYING J"
+    ]
+  },
+  {
+    "name": "Cumberland Farms",
+    "domain": "cumberlandfarms.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Shell",
+    "domain": "shell.us",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Exxon",
+    "domain": "exxon.com",
+    "category": "convenience",
+    "aliases": [
+      "EXXONMOBIL"
+    ]
+  },
+  {
+    "name": "Mobil",
+    "domain": "mobil.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "Chevron",
+    "domain": "chevron.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "BP",
+    "domain": "bp.com",
+    "category": "convenience",
+    "aliases": [
+      "AMOCO"
+    ]
+  },
+  {
+    "name": "Sunoco",
+    "domain": "sunoco.com",
+    "category": "convenience",
+    "aliases": []
+  },
+  {
+    "name": "The Home Depot",
+    "domain": "homedepot.com",
+    "category": "specialty",
+    "aliases": [
+      "HOME DEPOT"
+    ]
+  },
+  {
+    "name": "Lowe's",
+    "domain": "lowes.com",
+    "category": "specialty",
+    "aliases": [
+      "LOWES HOME CENTERS"
+    ]
+  },
+  {
+    "name": "Menards",
+    "domain": "menards.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Ace Hardware",
+    "domain": "acehardware.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Harbor Freight",
+    "domain": "harborfreight.com",
+    "category": "specialty",
+    "aliases": [
+      "HARBOR FREIGHT TOOLS"
+    ]
+  },
+  {
+    "name": "Tractor Supply",
+    "domain": "tractorsupply.com",
+    "category": "specialty",
+    "aliases": [
+      "TRACTOR SUPPLY CO"
+    ]
+  },
+  {
+    "name": "Best Buy",
+    "domain": "bestbuy.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Apple Store",
+    "domain": "apple.com",
+    "category": "specialty",
+    "aliases": [
+      "APPLE"
+    ]
+  },
+  {
+    "name": "GameStop",
+    "domain": "gamestop.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Dollar General",
+    "domain": "dollargeneral.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Dollar Tree",
+    "domain": "dollartree.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Family Dollar",
+    "domain": "familydollar.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Five Below",
+    "domain": "fivebelow.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "IKEA",
+    "domain": "ikea.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Michaels",
+    "domain": "michaels.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Hobby Lobby",
+    "domain": "hobbylobby.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "World Market",
+    "domain": "worldmarket.com",
+    "category": "specialty",
+    "aliases": [
+      "COST PLUS WORLD MARKET"
+    ]
+  },
+  {
+    "name": "PetSmart",
+    "domain": "petsmart.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Petco",
+    "domain": "petco.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Ulta Beauty",
+    "domain": "ulta.com",
+    "category": "specialty",
+    "aliases": [
+      "ULTA"
+    ]
+  },
+  {
+    "name": "Sephora",
+    "domain": "sephora.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Bath & Body Works",
+    "domain": "bathandbodyworks.com",
+    "category": "specialty",
+    "aliases": [
+      "BATH AND BODY WORKS"
+    ]
+  },
+  {
+    "name": "Barnes & Noble",
+    "domain": "barnesandnoble.com",
+    "category": "specialty",
+    "aliases": [
+      "BARNES AND NOBLE"
+    ]
+  },
+  {
+    "name": "Staples",
+    "domain": "staples.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Office Depot",
+    "domain": "officedepot.com",
+    "category": "specialty",
+    "aliases": [
+      "OFFICEMAX"
+    ]
+  },
+  {
+    "name": "Dick's Sporting Goods",
+    "domain": "dickssportinggoods.com",
+    "category": "specialty",
+    "aliases": [
+      "DICKS SPORTING GOODS"
+    ]
+  },
+  {
+    "name": "Academy Sports + Outdoors",
+    "domain": "academy.com",
+    "category": "specialty",
+    "aliases": [
+      "ACADEMY SPORTS"
+    ]
+  },
+  {
+    "name": "Old Navy",
+    "domain": "oldnavy.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "AutoZone",
+    "domain": "autozone.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "O'Reilly Auto Parts",
+    "domain": "oreillyauto.com",
+    "category": "specialty",
+    "aliases": [
+      "OREILLY AUTO PARTS"
+    ]
+  },
+  {
+    "name": "Advance Auto Parts",
+    "domain": "advanceautoparts.com",
+    "category": "specialty",
+    "aliases": []
+  },
+  {
+    "name": "Starbucks",
+    "domain": "starbucks.com",
+    "category": "other",
+    "aliases": []
+  },
+  {
+    "name": "McDonald's",
+    "domain": "mcdonalds.com",
+    "category": "other",
+    "aliases": [
+      "MCDONALDS"
+    ]
+  },
+  {
+    "name": "Chick-fil-A",
+    "domain": "chick-fil-a.com",
+    "category": "other",
+    "aliases": [
+      "CHICK FIL A"
+    ]
+  },
+  {
+    "name": "Chipotle",
+    "domain": "chipotle.com",
+    "category": "other",
+    "aliases": [
+      "CHIPOTLE MEXICAN GRILL"
+    ]
+  },
+  {
+    "name": "Dunkin'",
+    "domain": "dunkindonuts.com",
+    "category": "other",
+    "aliases": [
+      "DUNKIN",
+      "DUNKIN DONUTS"
+    ]
+  },
+  {
+    "name": "Panera Bread",
+    "domain": "panerabread.com",
+    "category": "other",
+    "aliases": [
+      "PANERA"
+    ]
+  },
+  {
+    "name": "Taco Bell",
+    "domain": "tacobell.com",
+    "category": "other",
+    "aliases": []
+  },
+  {
+    "name": "Subway",
+    "domain": "subway.com",
+    "category": "other",
+    "aliases": []
+  },
+  {
+    "name": "Domino's",
+    "domain": "dominos.com",
+    "category": "other",
+    "aliases": [
+      "DOMINOS PIZZA"
+    ]
+  },
+  {
+    "name": "Wendy's",
+    "domain": "wendys.com",
+    "category": "other",
+    "aliases": [
+      "WENDYS"
+    ]
+  },
+  {
+    "name": "Burger King",
+    "domain": "bk.com",
+    "category": "other",
+    "aliases": []
+  }
+]

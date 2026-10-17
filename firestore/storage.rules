@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Receipt images: owner-only, JPEG/PNG/HEIC up to 8 MB, at users/{uid}/receipts/{receiptId}.jpg
+// (must match FirebaseStorageService on Android/iOS). Thumbnails are reserved for a future function.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/receipts/{fileName} {
+      // Owner, or the admin console (read-only) for the receipt detail view.
+      allow read: if request.auth != null && (request.auth.uid == uid || request.auth.token.admin == true);
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|heic)');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    match /users/{uid}/thumbnails/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    // Store logos: public (the app shows them to everyone); uploaded only from the admin console.
+    match /store-icons/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true
+        && request.resource.size <= 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp|svg[+]xml)');
+      allow delete: if request.auth != null && request.auth.token.admin == true;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,8 @@
+lib/
+node_modules/
+*.log
+.env
+.env.*
+!.env.example
+.secret.local
+.runtimeconfig.json
