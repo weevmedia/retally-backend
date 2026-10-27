@@ -121,6 +121,12 @@ service cloud.firestore {
         }
       }
 
+      // ---------- devices (written by registerDevice) ----------
+      match /devices/{installationId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
       // ---------- derived, read-only for the client ----------
       match /purchasePatterns/{productId} {
         allow read: if isOwner(uid);

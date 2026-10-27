@@ -1,8 +1,8 @@
 /**
  * Admin console: app users and admin users (Firebase Auth).
  *
- *  - adminListUsers: every Auth account, with its admin flag, sign-in providers, last activity and
- *    receipt stats from `users/{uid}`. The console splits them into "App users" and "Admins".
+ *  - adminListUsers: every Auth account, with its admin flag, sign-in providers, last activity,
+ *    receipt stats from `users/{uid}` and its devices (`users/{uid}/devices`). The console splits them into "App users" and "Admins".
  *  - adminSetUserDisabled: enable / disable an account. Disabling also revokes its refresh tokens,
  *    so the mobile app and the console are signed out within the hour.
  *  - adminSetAdmin: grant / revoke console access (the `admin` custom claim).
@@ -36,6 +36,23 @@ export interface UserDto {
   lastActiveAt: string | null;
   receiptCount: number | null;
   lastReceiptAt: string | null;
+  devices: DeviceDto[];
+}
+
+/** One app install (users/{uid}/devices/{installationId}, written by registerDevice). */
+export interface DeviceDto {
+  installationId: string;
+  platform: string;
+  model: string;
+  osVersion: string;
+  appVersion: string;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+}
+
+function tsIso(v: unknown): string | null {
+  const t = v as { toDate?: () => Date } | undefined;
+  return t && typeof t.toDate === "function" ? t.toDate().toISOString() : null;
 }
 
 function isoOf(v: string | undefined | null): string | null {
@@ -62,6 +79,7 @@ function toDto(u: UserRecord): UserDto {
     lastActiveAt: isoOf(u.metadata.lastRefreshTime ?? u.metadata.lastSignInTime),
     receiptCount: null,
     lastReceiptAt: null,
+    devices: [],
   };
 }
 
@@ -129,6 +147,24 @@ export const adminListUsers = onCall({ region: REGION, memory: "512MiB", timeout
       if (last && typeof last.toDate === "function") batch[j].lastReceiptAt = last.toDate().toISOString();
     });
   }
+
+  // Devices: one collection-group read, grouped by owner, newest first.
+  const byUid = new Map(users.map((u) => [u.uid, u]));
+  const devices = await db.collectionGroup("devices").get();
+  for (const doc of devices.docs) {
+    const owner = byUid.get(doc.ref.parent.parent?.id ?? "");
+    if (!owner) continue;
+    owner.devices.push({
+      installationId: doc.id,
+      platform: String(doc.get("platform") ?? "unknown"),
+      model: String(doc.get("model") ?? "unknown"),
+      osVersion: String(doc.get("osVersion") ?? ""),
+      appVersion: String(doc.get("appVersion") ?? ""),
+      firstSeenAt: tsIso(doc.get("firstSeenAt")),
+      lastSeenAt: tsIso(doc.get("lastSeenAt")),
+    });
+  }
+  for (const u of users) u.devices.sort((a, b) => (b.lastSeenAt ?? "").localeCompare(a.lastSeenAt ?? ""));
 
   return { users, truncated, you: request.auth!.uid };
 });

@@ -23,6 +23,8 @@ import { REGION } from "../shared/constants";
 
 interface TornReceiptItemDto {
   name: string;
+  /** Product code printed on the line (UPC / item number), digits and dashes; null if none. */
+  itemNumber: string | null;
   price: number;
   confidence: number;
 }
@@ -53,7 +55,7 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact shape:
   "storeNameConfidence": 0.0-1.0,
   "purchaseDate": "YYYY-MM-DD or null",
   "purchaseDateConfidence": 0.0-1.0,
-  "items": [{"name": "string", "price": 0.00, "confidence": 0.0-1.0}],
+  "items": [{"name": "string", "itemNumber": "string or null", "price": 0.00, "confidence": 0.0-1.0}],
   "subtotal": 0.00 or null,
   "subtotalConfidence": 0.0-1.0,
   "tax": 0.00 or null,
@@ -67,7 +69,12 @@ Rules:
 - Confidence 1.0 = clearly readable. Below 0.7 = you inferred or guessed — be honest.
 - If a field is not visible at all, use null with confidence 0.
 - Prices as numbers (e.g. 4.99), not strings.
-- Only include items you can actually see; don't invent line items.`;
+- Only include items you can actually see; don't invent line items.
+- itemNumber is the product code printed on the item's own line (UPC, item number or
+  department code, e.g. "007874235187", "2040045", "212-01-0123"), copied exactly as printed.
+  Never put it in name. Use null when the line has no code — don't take one from another line.
+- Items are purchases only. Leave out discounts, coupons, savings, refunds, returns and any line
+  whose amount is negative (a minus before or after it, or in parentheses).`;
 
 /**
  * Extracts the JSON object from model output. Handles markdown fences,
@@ -221,13 +228,22 @@ export const parseTornReceipt = onRequest(
         const n = typeof v === "number" ? v : 0;
         return Math.min(1, Math.max(0, n));
       };
+      // Digits and dashes only, with at least 3 digits ("2040045", "212-01-0123"); anything else → null.
+      const cleanItemNumber = (v: unknown): string | null => {
+        if (typeof v !== "string" && typeof v !== "number") return null;
+        const code = String(v).replace(/[^0-9-]/g, "").replace(/^-+|-+$/g, "").slice(0, 24);
+        return (code.match(/\d/g)?.length ?? 0) >= 3 ? code : null;
+      };
       const cleanNum = (v: unknown): number | null =>
         typeof v === "number" && isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : null;
       const items: TornReceiptItemDto[] = Array.isArray(receipt.items)
         ? receipt.items
             .filter((it) => it && typeof it.name === "string" && it.name.trim().length > 0)
+            // Negative / zero amounts are discounts or refunds, not purchases.
+            .filter((it) => typeof it.price === "number" && isFinite(it.price) && it.price > 0)
             .map((it) => ({
               name: String(it.name).trim().slice(0, 128),
+              itemNumber: cleanItemNumber(it.itemNumber),
               price: cleanNum(it.price) ?? 0,
               confidence: clamp01(it.confidence),
             }))

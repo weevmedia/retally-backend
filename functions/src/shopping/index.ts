@@ -22,6 +22,8 @@ import { groupItems } from "./itemGrouping";
 import { loadAliases, nameUnresolved } from "./naming";
 import { PurchaseLine, StoreProfile, buildItemStats, buildStoreProfiles } from "./features";
 import { PROMPT_VERSION, decideShoppingList } from "./decide";
+import { DuplicateFact, NudgeDto, ReceiptFact, computeNudges } from "../nudges/compute";
+import { priceDropNudges } from "../priceDrops";
 
 const JOBS = "shoppingListJobs";
 const HISTORY_DAYS = 180;
@@ -105,24 +107,42 @@ export async function rebuildShoppingLists(uid: string, storeKeys?: string[]): P
       .where("uid", "==", uid).where("purchaseDate", ">=", cutoff).orderBy("purchaseDate", "desc").get(),
   ]);
 
-  const receipts = new Map<string, { storeKey: string; storeName: string; localDate: string }>();
+  const receipts = new Map<string, { storeKey: string; storeName: string; localDate: string; total: number }>();
   for (const doc of receiptsSnap.docs) {
     const storeName = String(doc.get("storeName") ?? "").trim();
     const storeKey = String(doc.get("merchantNameNormalized") ?? "") || normalizeMerchant(storeName);
     if (!storeKey) continue;
     const date = (doc.get("purchaseDate") as Timestamp).toDate();
-    receipts.set(doc.id, { storeKey, storeName, localDate: String(doc.get("purchaseDateLocal") ?? "") || localDate(date, tz) });
+    receipts.set(doc.id, {
+      storeKey, storeName,
+      localDate: String(doc.get("purchaseDateLocal") ?? "") || localDate(date, tz),
+      total: Number(doc.get("total") ?? 0) || 0,
+    });
   }
 
   const raw: Array<{ raw: string; receiptId: string; unitPrice: number; category: string }> = [];
+  // Lines flagged as charged twice: the double-charge nudge (they're left out of the stats).
+  const duplicates: DuplicateFact[] = [];
   for (const doc of linesSnap.docs) {
     const receiptId = String(doc.get("receiptId") ?? "");
+    const receipt = receipts.get(receiptId);
+    if (receipt && doc.get("isDuplicate") === true) {
+      duplicates.push({
+        receiptId, storeName: receipt.storeName, localDate: receipt.localDate,
+        item: String(doc.get("rawDescription") ?? "").trim() || "An item",
+        price: Number(doc.get("unitPrice") ?? doc.get("lineTotal") ?? 0) || 0,
+      });
+    }
     if (!receipts.has(receiptId) || doc.get("isDuplicate") === true) continue;
     const description = String(doc.get("rawDescription") ?? "").trim();
     if (!description) continue;
     raw.push({ raw: description, receiptId, unitPrice: Number(doc.get("unitPrice") ?? 0), category: String(doc.get("category") ?? "other") });
   }
   if (raw.length === 0) {
+    // Nothing to predict from (e.g. every receipt was deleted): drop lists built earlier, or
+    // getShoppingList would keep serving them until they expire.
+    await deleteShoppingLists(uid, new Set());
+    await db.doc(nudgesPath(uid)).delete();
     await db.collection(JOBS).doc(uid).set({ stale: false, lastRunAt: now, nextMorningRunAt: nextMorning(now, tz) }, { merge: true });
     return { status: "no-history", lists: [] };
   }
@@ -152,6 +172,18 @@ export async function rebuildShoppingLists(uid: string, storeKeys?: string[]): P
   }
   const items = buildItemStats(lines, todayLocal);
   const stores = buildStoreProfiles(lines, [...receipts.values()]);
+
+  // Home nudges from the same history (all stores, whatever [storeKeys] the lists are for).
+  try {
+    const receiptFacts: ReceiptFact[] = [...receipts.entries()].map(([id, r]) => ({ id, ...r }));
+    const nudges = computeNudges({
+      items, lines, stores, displayName: grouping.displayName, todayLocal,
+      receipts: receiptFacts, duplicates,
+    });
+    await writeNudges(uid, nudges, now);
+  } catch (e) {
+    logger.error(`nudges failed for uid=${uid}`, e); // never block the shopping list
+  }
 
   const activeSince = localDate(new Date(now.getTime() - ACTIVE_STORE_DAYS * 86_400_000), tz);
   const targets: StoreProfile[] = storeKeys && storeKeys.length > 0
@@ -191,10 +223,82 @@ export async function rebuildShoppingLists(uid: string, storeKeys?: string[]): P
     });
   }
 
+  // Drop lists for stores that no longer qualify: on a full rebuild, every store not rebuilt
+  // (no recent receipts there anymore); on a per-store rebuild, the asked-for stores that had
+  // nothing to build from.
+  const rebuilt = new Set(result.lists.map((l) => l.insightId));
+  if (storeKeys && storeKeys.length > 0) {
+    const gone = storeKeys.map(insightId).filter((id) => !rebuilt.has(id));
+    await Promise.all(gone.map((id) => db.doc(`users/${uid}/insights/${id}`).delete()));
+  } else {
+    await deleteShoppingLists(uid, rebuilt);
+  }
+
   await db.collection(JOBS).doc(uid).set({
     stale: false, lastRunAt: now, nextMorningRunAt: nextMorning(now, tz), timeZone: tz, skippedReason: null,
   }, { merge: true });
   return result;
+}
+
+// ---------- nudges ----------
+
+/** One doc per user holding the current Home nudges. */
+const nudgesPath = (uid: string): string => `users/${uid}/insights/nudges`;
+const NUDGE_TTL_MS = 2 * 86_400_000;
+
+async function writeNudges(uid: string, nudges: NudgeDto[], now: Date): Promise<void> {
+  await getFirestore().doc(nudgesPath(uid)).set({
+    type: "nudges",
+    items: nudges,
+    generatedAt: Timestamp.fromDate(now),
+    expiresAt: Timestamp.fromMillis(now.getTime() + NUDGE_TTL_MS),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Callable: `getNudges({ refresh? })` -> `{ status, nudges: NudgeDto[], generatedAt }`.
+ * Serves the saved nudges; rebuilds (lists + nudges, same pass) when there are none, they're
+ * over a day old, or [refresh]. Signed-in users only, like the Smart List.
+ */
+export const getNudges = onCall(
+  { region: REGION, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 120, memory: "512MiB" },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "sign-in-required");
+    if (request.auth.token.firebase?.sign_in_provider === "anonymous") {
+      throw new HttpsError("permission-denied", "sign-in-required");
+    }
+    const uid = request.auth.uid;
+    const ref = getFirestore().doc(nudgesPath(uid));
+    let snap = await ref.get();
+    const generated = (snap.get("generatedAt") as Timestamp | undefined)?.toMillis() ?? 0;
+    let status: ShoppingListResult["status"] = "ok";
+    if (request.data?.refresh === true || !snap.exists || Date.now() - generated > STALE_FOR_APP_MS) {
+      status = (await rebuildShoppingLists(uid)).status;
+      snap = await ref.get();
+    }
+    const history = status === "no-history" || !snap.exists ? [] : ((snap.get("items") ?? []) as NudgeDto[]);
+    // Price drops come from the daily cross-shopper scan, not this user's rebuild.
+    const drops = await priceDropNudges(uid).catch((e) => {
+      logger.error(`price-drop nudges failed for uid=${uid}`, e);
+      return [] as NudgeDto[];
+    });
+    const nudges = [...drops, ...history].sort((a, b) => b.priority - a.priority);
+    const at = (snap.get("generatedAt") as Timestamp | undefined)?.toDate().toISOString() ?? null;
+    return { status, nudges, generatedAt: at };
+  },
+);
+
+/** Deletes the user's shopping-list insights except [keep] (insight ids). */
+async function deleteShoppingLists(uid: string, keep: Set<string>): Promise<void> {
+  const db = getFirestore();
+  const snap = await db.collection(`users/${uid}/insights`).where("type", "==", "shopping_list").get();
+  const stale = snap.docs.filter((d) => !keep.has(d.id));
+  if (stale.length === 0) return;
+  const batch = db.batch();
+  for (const d of stale) batch.delete(d.ref);
+  await batch.commit();
+  logger.info(`deleteShoppingLists: uid=${uid} removed ${stale.length} list(s)`);
 }
 
 // ---------- triggers ----------
@@ -305,7 +409,8 @@ export const getShoppingList = onCall(
     if (forceRefresh || lists.length === 0 || Date.now() - newest > STALE_FOR_APP_MS || missingStore) {
       const result = await rebuildShoppingLists(uid, storeKey ? [storeKey] : undefined);
       status = result.status;
-      lists = await readShoppingLists(uid);
+      // "no-history" means there is nothing to predict from: never serve leftover lists with it.
+      lists = status === "no-history" ? [] : await readShoppingLists(uid);
     }
     return { status, lists };
   },

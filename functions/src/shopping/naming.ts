@@ -62,9 +62,10 @@ export async function nameUnresolved(raws: string[]): Promise<Map<string, string
       const raw = (item.raw ?? "").trim().toLowerCase();
       if (!allowed.has(raw)) continue; // ignore anything the model invented
       const name = typeof item.name === "string" ? item.name.trim().toLowerCase().slice(0, 60) : "";
+      // Merge: keeps the category the categorizeItems call may have cached for this line.
       batch.set(db.collection(COLLECTION).doc(sha256(raw)), {
         raw, name: name || null, model: GEMINI_LITE_MODEL, createdAt: new Date(),
-      });
+      }, { merge: true });
       out.set(raw, name);
     }
     await batch.commit();

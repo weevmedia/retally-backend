@@ -13,6 +13,7 @@ import { isPlausibleStoreName, storeKeyOf } from "../shared/storeKey";
 
 export { adminGetReceipt, adminSearchReceipts } from "./receipts";
 export { adminInviteAdmin, adminListUsers, adminSetAdmin, adminSetUserDisabled } from "./users";
+export { adminListItemAliases, adminSetItemCategory } from "./itemAliases";
 
 const STORES = "store_icons";
 const CATEGORIES_DOC = "config/itemCategories";
@@ -26,6 +27,20 @@ function iconUrlOf(v: unknown): string {
   if (!url.startsWith("https://firebasestorage.googleapis.com/")) {
     throw new HttpsError("invalid-argument", "iconUrl must be a Firebase Storage download URL.");
   }
+  return url;
+}
+
+/** Optional https link to the store's weekly-ad page; "" clears it. */
+function weeklyAdUrlOf(v: unknown): string {
+  if (v === undefined || v === null || v === "") return "";
+  const url = text(v, "weeklyAdUrl", 2048);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new HttpsError("invalid-argument", "Weekly ad link must be a full URL (https://…).");
+  }
+  if (parsed.protocol !== "https:") throw new HttpsError("invalid-argument", "Weekly ad link must start with https://.");
   return url;
 }
 
@@ -51,7 +66,13 @@ export const adminUpsertStore = onCall({ region: REGION }, async (request) => {
   if (!KEY_RE.test(key)) throw new HttpsError("invalid-argument", "key must be lowercase letters and digits.");
   const category = d.category === null || d.category === undefined ? null : text(d.category, "category", 32);
   if (category !== null && !CATEGORIES.includes(category)) throw new HttpsError("invalid-argument", "Unknown category.");
-  const after = { name: text(d.name, "name", 64), iconUrl: iconUrlOf(d.iconUrl), aliases: aliasesOf(d.aliases), category };
+  const after = {
+    name: text(d.name, "name", 64),
+    iconUrl: iconUrlOf(d.iconUrl),
+    weeklyAdUrl: weeklyAdUrlOf(d.weeklyAdUrl),
+    aliases: aliasesOf(d.aliases),
+    category,
+  };
   const isNew = d.isNew === true;
 
   const db = getFirestore();

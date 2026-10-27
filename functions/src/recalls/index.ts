@@ -1,14 +1,16 @@
 /**
- * Food recall alerts.
+ * Food recall alerts — fetched live, nothing stored in Firestore.
  *
- *  - `syncRecalls` (every 6 hours) pulls new FDA + USDA FSIS food recalls into `/recalls`.
- *  - `getRecalls` (callable) returns the latest recalls for the Alerts screen. For signed-in
- *    shoppers it also flags recalls that mention something they bought recently
- *    ("You may have bought this"), using the same item names as SmartList.
+ *  - `getRecalls` (callable) returns the latest FDA + USDA FSIS food recalls for the app's
+ *    Recalls screen. For signed-in shoppers it also flags recalls that mention something they
+ *    bought recently ("You may have bought this"), using the same item names as SmartList.
  *
- * The app never calls the government APIs directly: one server fetch serves every user.
+ * Recalls are public data, so there's no reason to keep a copy: each function instance fetches
+ * both sources at most every 6 hours (pull-to-refresh: at most every 30 minutes) and keeps the
+ * result in memory. A cold instance fetches on
+ * its first call; a failed fetch keeps serving the last good list. The app never calls the
+ * government APIs directly.
  */
-import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import { getAuth } from "firebase-admin/auth";
@@ -19,16 +21,21 @@ import { loadAliases } from "../shopping/naming";
 import { Recall, fetchFdaRecalls, fetchFsisRecalls } from "./sources";
 import { PurchasedItem, RecallMatch, matchRecall } from "./match";
 
-const RECALLS = "recalls";
-const META_DOC = "recallsMeta/sync";
 const KEEP_DAYS = 60;
 const MATCH_HISTORY_DAYS = 45;
 const MAX_RESULTS = 50;
-const SYNC_EVERY_MS = 6 * 3_600_000;
-/** Minimum gap between inline sync attempts when the last one found nothing. */
+/** How long a fetched list is reused before fetching again. */
+const CACHE_MS = 6 * 3_600_000;
+/** After a failed or empty fetch, wait this long before trying the sources again. */
 const RETRY_GAP_MS = 10 * 60_000;
-/** Same, for an explicit refresh from the app. */
+/** Minimum gap between fetches forced by pull-to-refresh. */
 const REFRESH_GAP_MS = 60_000;
+/**
+ * Pull-to-refresh only refetches a list at least this old. FDA and USDA publish a handful of
+ * recalls a day, so fresher data isn't worth the calls — and openFDA/FSIS may throttle heavy
+ * users. Everyone's refresh within this window is served from memory.
+ */
+const REFRESH_MIN_AGE_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;
 
 export interface RecallDto {
@@ -43,49 +50,51 @@ export interface RecallDto {
   match: RecallMatch | null;
 }
 
-/** Fetches both sources and upserts recent recalls. Returns how many were written. */
-export async function syncRecallsNow(): Promise<number> {
-  const db = getFirestore();
+// ---------- in-memory cache (per function instance) ----------
+
+let cached: { recalls: Recall[]; fetchedAt: number } | null = null;
+let lastAttemptAt = 0;
+let inFlight: Promise<Recall[]> | null = null;
+
+/** Fetches both sources: last KEEP_DAYS days, newest first, capped at MAX_RESULTS. */
+async function fetchRecalls(): Promise<Recall[]> {
   const since = Date.now() - KEEP_DAYS * DAY_MS;
-  const [fda, usda] = await Promise.all([fetchFdaRecalls(), fetchFsisRecalls(since)]);
-  const fresh = [...fda, ...usda].filter((r) => Date.parse(r.publishedAt) >= since);
-  const batch = db.batch();
-  for (const r of fresh) {
-    batch.set(db.collection(RECALLS).doc(r.id), {
-      ...r,
-      classification: r.classification ?? null,
-      publishedAtTs: Timestamp.fromMillis(Date.parse(r.publishedAt)),
-      updatedAt: Timestamp.now(),
-    }, { merge: true });
+  const [fda, usda] = await Promise.all([
+    fetchFdaRecalls().catch((e) => { logger.warn("recalls: FDA fetch failed", e); return [] as Recall[]; }),
+    fetchFsisRecalls(since).catch((e) => { logger.warn("recalls: USDA fetch failed", e); return [] as Recall[]; }),
+  ]);
+  const byId = new Map<string, Recall>();
+  for (const r of [...fda, ...usda]) {
+    if (Date.parse(r.publishedAt) >= since && !byId.has(r.id)) byId.set(r.id, r);
   }
-  // An empty fetch is treated as a failed sync, so the next app open retries instead of
-  // waiting 12 hours behind an "up to date" timestamp.
-  batch.set(db.doc(META_DOC), {
-    lastAttemptAt: Timestamp.now(),
-    ...(fresh.length > 0 ? { lastSyncAt: Timestamp.now() } : {}),
-    fda: fda.length,
-    usda: usda.length,
-  }, { merge: true });
-  await batch.commit();
-  logger.info(`syncRecalls: fda=${fda.length} usda=${usda.length} written=${fresh.length}`);
-  return fresh.length;
+  const recalls = [...byId.values()]
+    .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+    .slice(0, MAX_RESULTS);
+  logger.info(`recalls: fetched fda=${fda.length} usda=${usda.length} kept=${recalls.length}`);
+  return recalls;
 }
 
-export const syncRecalls = onSchedule(
-  { schedule: "every 6 hours", region: REGION, timeoutSeconds: 120 },
-  async () => {
-    await syncRecallsNow();
-  },
-);
+/** The cached list, refetched when stale (or on refresh), never hammering a failing source. */
+async function currentRecalls(requestedRefresh: boolean): Promise<Recall[]> {
+  const now = Date.now();
+  const refresh = requestedRefresh && (cached === null || now - cached.fetchedAt >= REFRESH_MIN_AGE_MS);
+  const fresh = cached !== null && cached.recalls.length > 0 && now - cached.fetchedAt < CACHE_MS;
+  const gap = refresh ? REFRESH_GAP_MS : RETRY_GAP_MS;
+  if ((fresh && !refresh) || now - lastAttemptAt < gap) return cached?.recalls ?? [];
 
-async function readRecalls(): Promise<Array<Recall & { classification?: string }>> {
-  const since = Timestamp.fromMillis(Date.now() - KEEP_DAYS * DAY_MS);
-  const snap = await getFirestore().collection(RECALLS)
-    .where("publishedAtTs", ">=", since)
-    .orderBy("publishedAtTs", "desc")
-    .limit(MAX_RESULTS)
-    .get();
-  return snap.docs.map((d) => d.data() as Recall);
+  // One fetch at a time per instance; concurrent callers share it.
+  inFlight ??= (async () => {
+    lastAttemptAt = Date.now();
+    try {
+      const recalls = await fetchRecalls();
+      if (recalls.length > 0) cached = { recalls, fetchedAt: Date.now() };
+      // An empty result keeps the last good list: the sources are flaky behind bot protection.
+      return cached?.recalls ?? recalls;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }
 
 /** Generic names of what the shopper bought recently, with the latest purchase date. */
@@ -122,7 +131,9 @@ async function purchasedItems(uid: string): Promise<PurchasedItem[]> {
 }
 
 export const getRecalls = onCall(
-  { region: REGION, timeoutSeconds: 60, memory: "512MiB" },
+  // A few instances are plenty for a list that changes a few times a day; capping them also caps
+  // how often the government sources get called (each instance keeps its own copy).
+  { region: REGION, timeoutSeconds: 60, memory: "512MiB", maxInstances: 5 },
   async (request) => {
     // Recalls are public; matching needs the shopper's synced receipts, so signed-in only.
     const uid = request.auth?.uid;
@@ -132,20 +143,8 @@ export const getRecalls = onCall(
       signedIn = !!user && (!!user.email || user.providerData.length > 0);
     }
 
-    // Sync inline when there is nothing stored yet, the data is stale (stalled schedule), or the
-    // user pulled to refresh. Attempts are spaced out so a blocked source isn't hammered.
     const refresh = request.data?.refresh === true;
-    const meta = await getFirestore().doc(META_DOC).get();
-    const last = (meta.get("lastSyncAt") as Timestamp | undefined)?.toMillis() ?? 0;
-    const attempted = (meta.get("lastAttemptAt") as Timestamp | undefined)?.toMillis() ?? 0;
-    let recalls = await readRecalls();
-    const stale = recalls.length === 0 || Date.now() - last > SYNC_EVERY_MS * 2 || refresh;
-    const gap = refresh ? REFRESH_GAP_MS : RETRY_GAP_MS;
-    if (stale && Date.now() - attempted > gap) {
-      logger.info(`getRecalls: syncing inline (stored=${recalls.length}, refresh=${refresh})`);
-      await syncRecallsNow().catch((e) => logger.error("getRecalls: inline sync failed", e));
-      recalls = await readRecalls();
-    }
+    const recalls = await currentRecalls(refresh);
     logger.info(`getRecalls: returning ${recalls.length} recalls (signedIn=${signedIn})`);
 
     const items = signedIn && uid ? await purchasedItems(uid).catch((e) => {
@@ -161,7 +160,7 @@ export const getRecalls = onCall(
       url: r.url,
       publishedAt: r.publishedAt,
       classification: r.classification ?? null,
-      match: items.length > 0 ? matchRecall(r.matchText ?? r.title, items) : null,
+      match: items.length > 0 ? matchRecall(r.matchText || r.title, items) : null,
     }));
     return { signedIn, recalls: out, matchedCount: out.filter((r) => r.match).length };
   },

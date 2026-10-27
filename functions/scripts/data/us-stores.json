@@ -44,7 +44,72 @@
     "category": "warehouse",
     "aliases": [
       "BJS WHOLESALE",
-      "BJ'S"
+      "BJ'S",
+      "BJ'S WHOLESALE CLUB",
+      "BJS WHOLESALE CLUB",
+      "BJS"
+    ]
+  },
+  {
+    "name": "Costco Business Center",
+    "domain": "costcobusinessdelivery.com",
+    "category": "warehouse",
+    "aliases": [
+      "COSTCO BUSINESS CENTER",
+      "COSTCO BUS CTR",
+      "COSTCO BUSINESS CTR"
+    ]
+  },
+  {
+    "name": "Restaurant Depot",
+    "domain": "restaurantdepot.com",
+    "category": "warehouse",
+    "aliases": [
+      "RESTAURANT DEPOT",
+      "REST DEPOT"
+    ]
+  },
+  {
+    "name": "Jetro Cash & Carry",
+    "domain": "jetro.com",
+    "category": "warehouse",
+    "aliases": [
+      "JETRO",
+      "JETRO CASH AND CARRY",
+      "JETRO CASH & CARRY"
+    ]
+  },
+  {
+    "name": "CHEF'STORE",
+    "domain": "chefstore.com",
+    "category": "warehouse",
+    "aliases": [
+      "CHEFSTORE",
+      "CHEF STORE",
+      "US FOODS CHEF'STORE",
+      "CASH&CARRY",
+      "CASH & CARRY SMART FOODSERVICE",
+      "SMART FOODSERVICE"
+    ]
+  },
+  {
+    "name": "Gordon Food Service Store",
+    "domain": "gfs.com",
+    "category": "warehouse",
+    "aliases": [
+      "GFS STORE",
+      "GORDON FOOD SERVICE",
+      "GFS MARKETPLACE"
+    ]
+  },
+  {
+    "name": "Smart & Final",
+    "domain": "smartandfinal.com",
+    "category": "warehouse",
+    "aliases": [
+      "SMART AND FINAL",
+      "SMART & FINAL EXTRA",
+      "SMART FINAL"
     ]
   },
   {
@@ -150,7 +215,10 @@
     "domain": "stopandshop.com",
     "category": "grocery",
     "aliases": [
-      "STOP AND SHOP"
+      "STOP AND SHOP",
+      "STOP & SHOP",
+      "STOP&SHOP",
+      "STOP N SHOP"
     ]
   },
   {
@@ -272,7 +340,10 @@
     "domain": "shaws.com",
     "category": "grocery",
     "aliases": [
-      "SHAWS"
+      "SHAWS",
+      "SHAW'S",
+      "SHAWS SUPERMARKET",
+      "SHAW'S SUPERMARKET"
     ]
   },
   {

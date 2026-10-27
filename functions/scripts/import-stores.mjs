@@ -13,8 +13,11 @@
  *
  * Logo source, per store, first one that works:
  *   1. a local file  scripts/data/logos/<key>.(png|jpg|jpeg|webp|svg)   ← drop in your own to override
- *   2. Google's favicon service for the store's domain (256px)
- *   3. the site's /apple-touch-icon.png
+ *   2. "logoUrl" on the store's row in the JSON (a direct image link you picked)
+ *   3. Google's favicon service for the store's domain (256px)
+ *   4. the site's /apple-touch-icon.png
+ *   5. the icons the home page itself declares (<link rel="icon" / "apple-touch-icon"> and its
+ *      web-app manifest), largest first — many sites only expose a big icon this way
  * Downloaded logos smaller than MIN_PX are rejected, so you never get a blurry 16px favicon;
  * the summary at the end lists those stores so you can add a local file for them.
  *
@@ -123,29 +126,90 @@ async function resolveLogo(store, key) {
     const ext = extname(local).slice(1).toLowerCase();
     return { buf, type: TYPES[ext], ext: ext === "jpeg" ? "jpg" : ext, source: `local ${local.split("/").pop()}` };
   }
-  if (!store.domain) throw new Error("no domain and no local logo");
+  if (!store.domain && !store.logoUrl) throw new Error("no domain and no local logo");
 
-  const candidates = [
-    { url: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(store.domain)}&sz=256`, source: "google favicon" },
-    { url: `https://${store.domain}/apple-touch-icon.png`, source: "apple-touch-icon" },
-    { url: `https://www.${store.domain.replace(/^www\./, "")}/apple-touch-icon.png`, source: "apple-touch-icon (www)" },
-  ];
+  const candidates = [];
+  if (store.logoUrl) candidates.push({ url: store.logoUrl, source: "logoUrl" });
+  if (store.domain) {
+    candidates.push(
+      { url: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(store.domain)}&sz=256`, source: "google favicon" },
+      { url: `https://${store.domain}/apple-touch-icon.png`, source: "apple-touch-icon" },
+      { url: `https://www.${store.domain.replace(/^www\./, "")}/apple-touch-icon.png`, source: "apple-touch-icon (www)" },
+    );
+  }
   const problems = [];
-  for (const c of candidates) {
+  const tried = new Set();
+  const attempt = async (c) => {
+    if (tried.has(c.url)) return null;
+    tried.add(c.url);
     try {
       const buf = await download(c.url);
       const info = sniff(buf);
-      if (!info) { problems.push(`${c.source}: not an image`); continue; }
+      if (!info) { problems.push(`${c.source}: not an image`); return null; }
       if (info.width !== null && Math.min(info.width, info.height) < MIN_PX) {
         problems.push(`${c.source}: only ${info.width}x${info.height}px`);
-        continue;
+        return null;
       }
       return { buf, type: info.type, ext: info.ext, source: c.source };
     } catch (e) {
       problems.push(`${c.source}: ${e.message}`);
+      return null;
+    }
+  };
+  for (const c of candidates) {
+    const hit = await attempt(c);
+    if (hit) return hit;
+  }
+  if (store.domain) {
+    for (const c of await declaredIcons(store.domain, problems)) {
+      const hit = await attempt(c);
+      if (hit) return hit;
     }
   }
   throw new Error(problems.join("; "));
+}
+
+/**
+ * Icons the store's home page declares: `<link rel="icon|apple-touch-icon" sizes=… href=…>` and the
+ * web-app manifest's `icons`. Biggest declared size first; undeclared sizes go last.
+ */
+async function declaredIcons(domain, problems) {
+  const found = [];
+  for (const home of [`https://www.${domain.replace(/^www\./, "")}/`, `https://${domain}/`]) {
+    let html;
+    try {
+      html = (await download(home)).toString("utf8");
+    } catch (e) {
+      problems.push(`home page ${home}: ${e.message}`);
+      continue;
+    }
+    const abs = (href) => { try { return new URL(href.replace(/&amp;/g, "&"), home).href; } catch { return null; } };
+    const attr = (tag, name) => tag.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1];
+    const sizeOf = (sizes) => Math.max(0, ...String(sizes ?? "").split(/\s+/).map((x) => parseInt(x, 10) || 0));
+    for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+      const rel = (attr(tag, "rel") ?? "").toLowerCase();
+      const href = attr(tag, "href");
+      if (!href) continue;
+      if (/(apple-touch-icon|icon)/.test(rel) && !rel.includes("mask")) { // mask-icon is a one-colour SVG
+        const url = abs(href);
+        if (url) found.push({ url, size: sizeOf(attr(tag, "sizes")) || (rel.includes("apple") ? 180 : 0), source: `page ${rel}` });
+      } else if (rel === "manifest") {
+        const url = abs(href);
+        if (!url) continue;
+        try {
+          const manifest = JSON.parse((await download(url)).toString("utf8"));
+          for (const icon of manifest.icons ?? []) {
+            const iconUrl = icon?.src ? (() => { try { return new URL(icon.src, url).href; } catch { return null; } })() : null;
+            if (iconUrl) found.push({ url: iconUrl, size: sizeOf(icon.sizes), source: "web manifest" });
+          }
+        } catch (e) {
+          problems.push(`manifest: ${e.message}`);
+        }
+      }
+    }
+    if (found.length) break; // www worked; don't fetch the bare domain too
+  }
+  return found.sort((a, b) => b.size - a.size);
 }
 
 // ---------- main ----------

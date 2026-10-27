@@ -118,6 +118,7 @@ reachable with `collectionGroup("lineItems")`.
 | isDuplicate | bool | what ReTally flags |
 | duplicateOfLineId | string? | the row it duplicates |
 | userCorrected | bool | user edited name/price — the highest-value training signal |
+| categoryCorrected | bool | shopper picked `category` by hand — AI/keyword tagging never changes it |
 | currency | string | denormalized |
 | embedding | vector(768)? | of `rawDescription` → product matching |
 | createdAt / updatedAt | timestamp | |
@@ -205,19 +206,54 @@ only. The rules reject a receipt whose `ocr.piiScrubbed` is not `true`.
 * **Training exports**: enable the *Stream Firestore to BigQuery* extension on
   `users/{uid}/receipts/{receiptId}/lineItems` for SQL analytics over all rows.
 
-## Food recalls (`/recalls/{id}`, server-only)
+## Food recalls (not stored)
 
-Written by `syncRecalls` (every 6 h) from the FDA recalls RSS feed (food only; drug/device/cosmetic
-items filtered out) and the USDA FSIS Recall API. Read by the `getRecalls` callable, never by clients.
+Recalls are public data and are **not** kept in Firestore. `getRecalls` fetches the FDA recalls
+RSS feed (food only; drug/device/cosmetic items filtered out) and the USDA FSIS Recall API live,
+keeps the last 60 days (max 50, newest first) in function memory for 6 hours, and flags
+"you may have bought this" against the signed-in shopper's recent line items. The old
+`/recalls` and `/recallsMeta` collections are no longer read or written and can be deleted.
 
-| Field | Type | Notes |
+## users/{uid}/insights/priceDrops  (functions w)
+
+Written daily by `processPriceDrops` (05:30 America/New_York). Items the user bought in the
+last 30 days that newer ReTally receipts — from any shopper — show cheaper at the same store
+chain (matched by printed item number, else printed description). Served to the app as
+`price_drop` nudges by `getNudges`; ignored once older than 3 days or 30 days past purchase.
+
+| field | type | notes |
 |---|---|---|
-| source | "FDA" \| "USDA" | |
-| title | string | |
-| excerpt | string | plain text, ~240 chars |
-| url | string | official notice (FSIS falls back to fsis.usda.gov/recalls) |
-| publishedAt / publishedAtTs | string (ISO) / timestamp | last 60 days are returned |
-| matchText | string | title + products, used for "you may have bought this" |
-| classification | string? | e.g. "Class I" (USDA) |
+| type | string | `price_drops` |
+| drops | array | `{ id, receiptId, storeName, item, paid, current, drop, purchasedAt, seenAt }` (ms times), biggest drop first, max 5 |
+| generatedAt | timestamp | run time |
 
-`/recallsMeta/sync`: `lastSyncAt`, counts per source. `getRecalls` syncs inline when the last sync is >12 h old.
+`system/priceDrops` holds `{ uids, ranAt, lines }` so users whose drops ended get their doc removed.
+Needs collection-group indexes on `receipts.purchaseDate` and `lineItems.purchaseDate` (see firestore.indexes.json).
+
+## itemAliases/{sha256(raw lower-cased)}  (functions only)
+
+Shared cache per distinct receipt line text. `name` (generic product name, null = not a product)
+is written by the Smart List naming pass; `category` (+ `categoryModel`, `categorizedAt`) by the
+`categorizeItems` callable. Both write with merge, so neither overwrites the other.
+Categories: grocery, household, personal_care, health, baby, pet, alcohol, electronics, clothing,
+home, other (the app adds `uncategorized` for lines not classified yet).
+
+## users/{uid}/devices/{installationId}  (functions w, owner r)
+
+One doc per app install, written by the `registerDevice` callable on sign-in (guests too) and at
+most daily after. `installationId` is a random id the app makes on first launch, so a reinstall
+shows up as a new device.
+
+| field | type | notes |
+|---|---|---|
+| uid | string | owner (denormalized for the admin collection-group read) |
+| installationId | string | same as the doc id |
+| platform | string | `android` \| `ios` |
+| model | string | e.g. `Google Pixel 8`, `iPhone15,2` |
+| osVersion | string | e.g. `15`, `18.1` |
+| appVersion | string | e.g. `1.4.0 (42)` |
+| firstSeenAt | timestamp | first registration |
+| lastSeenAt | timestamp | latest registration |
+
+`deviceOwners/{installationId}` → `{ uid, updatedAt }` (functions only) tracks the current owner;
+signing into another account on the same phone moves the device there.
