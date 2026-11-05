@@ -178,10 +178,15 @@ export async function decideShoppingList(
   stores: Map<string, StoreProfile>,
   todayLocal: string,
   weekdayName: string,
+  options: { useGemini: boolean } = { useGemini: true },
 ): Promise<ShoppingListDecision> {
   const rows = candidates(items, displayName, store, stores);
   if (rows.length === 0) {
     return { dueHere: [], alsoHere: [], frequent: [], usualShoppingDay: store.usualWeekday, decidedBy: "fallback", model: null };
+  }
+  // Lower-traffic stores are decided arithmetically: same candidates, no model call.
+  if (!options.useGemini) {
+    return { ...fallback(rows, store), usualShoppingDay: store.usualWeekday, decidedBy: "fallback", model: null };
   }
   try {
     const raw = await generateJson<unknown>(GEMINI_DECISION_MODEL, prompt(rows, store, todayLocal, weekdayName), {

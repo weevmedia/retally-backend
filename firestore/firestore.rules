@@ -172,6 +172,13 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+    // App version gate: every install reads it at launch to decide whether to nudge or force an
+    // update — before the guest sign-in may have completed, so it is public (it holds nothing
+    // but store links and version numbers). Edited from the console / provision.mjs only.
+    match /config/appVersion {
+      allow read: if true;
+      allow write: if false;
+    }
     match /adminAudit/{entryId} {
       allow read: if isAdmin();
       allow write: if false;

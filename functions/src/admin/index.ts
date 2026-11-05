@@ -14,6 +14,7 @@ import { isPlausibleStoreName, storeKeyOf } from "../shared/storeKey";
 export { adminGetReceipt, adminSearchReceipts } from "./receipts";
 export { adminInviteAdmin, adminListUsers, adminSetAdmin, adminSetUserDisabled } from "./users";
 export { adminListItemAliases, adminSetItemCategory } from "./itemAliases";
+export { adminGetAppVersion, adminPreviewAppVersion, adminSetAppVersion } from "./appVersion";
 
 const STORES = "store_icons";
 const CATEGORIES_DOC = "config/itemCategories";

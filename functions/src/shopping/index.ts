@@ -28,7 +28,12 @@ import { priceDropNudges } from "../priceDrops";
 const JOBS = "shoppingListJobs";
 const HISTORY_DAYS = 180;
 const ACTIVE_STORE_DAYS = 90;
-const TOP_STORES = 3;
+// Stores get a list when visited within ACTIVE_STORE_DAYS. The most-visited GEMINI_STORES are
+// decided by Gemini; the rest use the arithmetic fallback so the "you're near {store}" geofence
+// (the app fences up to MAX_LIST_STORES stores) always has real items to show, at no extra
+// model cost. A per-store request (a store the shopper is standing in) always gets Gemini.
+const GEMINI_STORES = 3;
+const MAX_LIST_STORES = 20;
 const DEBOUNCE_MS = 3 * 60_000;
 const MORNING_HOUR = 7;
 const LIST_TTL_MS = 2 * 86_400_000;
@@ -186,16 +191,27 @@ export async function rebuildShoppingLists(uid: string, storeKeys?: string[]): P
   }
 
   const activeSince = localDate(new Date(now.getTime() - ACTIVE_STORE_DAYS * 86_400_000), tz);
-  const targets: StoreProfile[] = storeKeys && storeKeys.length > 0
-    ? storeKeys.map((k) => stores.get(k)).filter((s): s is StoreProfile => !!s)
+  const requested = !!storeKeys && storeKeys.length > 0;
+  const targets: StoreProfile[] = requested
+    ? storeKeys!.map((k) => stores.get(k)).filter((s): s is StoreProfile => !!s)
     : [...stores.values()].filter((s) => s.lastTripDate >= activeSince)
-      .sort((a, b) => b.tripCount - a.tripCount).slice(0, TOP_STORES);
+      .sort((a, b) => b.tripCount - a.tripCount).slice(0, MAX_LIST_STORES);
 
   const result: ShoppingListResult = { status: "ok", lists: [] };
-  for (const store of targets) {
-    const decision = await decideShoppingList(items, grouping.displayName, store, stores, todayLocal, weekdayName);
+  for (const [index, store] of targets.entries()) {
+    const useGemini = requested || index < GEMINI_STORES;
+    const decision = await decideShoppingList(
+      items, grouping.displayName, store, stores, todayLocal, weekdayName, { useGemini },
+    );
     const id = insightId(store.key);
-    await db.doc(`users/${uid}/insights/${id}`).set({
+    const ref = db.doc(`users/${uid}/insights/${id}`);
+    // Position by visit frequency: the app orders its store list by it (every list in one
+    // rebuild shares the same generatedAt). A per-store rebuild keeps the rank it already had;
+    // a store without one yet sorts after the ranked stores.
+    const rank = requested
+      ? Number((await ref.get()).get("payload.rank") ?? MAX_LIST_STORES)
+      : index;
+    await ref.set({
       type: "shopping_list",
       title: `Shopping list for ${store.name}`,
       body: `${decision.dueHere.length} due here · ${decision.alsoHere.length} you usually get elsewhere`,
@@ -207,6 +223,7 @@ export async function rebuildShoppingLists(uid: string, storeKeys?: string[]): P
         frequent: decision.frequent,
         usualShoppingDay: decision.usualShoppingDay,
         decidedBy: decision.decidedBy,
+        rank,
       },
       model: decision.model ?? "fallback",
       promptVersion: PROMPT_VERSION,
@@ -349,6 +366,8 @@ export interface ShoppingListDto {
   frequent: unknown[];
   usualShoppingDay: string | null;
   decidedBy: string;
+  /** Position by visit frequency (0 = most visited); lists built before ranking sort last. */
+  rank: number;
   generatedAt: string;
 }
 
@@ -369,10 +388,11 @@ export async function readShoppingLists(uid: string): Promise<ShoppingListDto[]>
         frequent: Array.isArray(p.frequent) ? p.frequent : [],
         usualShoppingDay: typeof p.usualShoppingDay === "string" ? p.usualShoppingDay : null,
         decidedBy: String(p.decidedBy ?? "gemini"),
+        rank: typeof p.rank === "number" ? p.rank : MAX_LIST_STORES,
         generatedAt: ((d.get("generatedAt") as Timestamp | undefined)?.toDate() ?? new Date(0)).toISOString(),
       };
     })
-    .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+    .sort((a, b) => a.rank - b.rank || b.generatedAt.localeCompare(a.generatedAt));
 }
 
 const STALE_FOR_APP_MS = 24 * 3_600_000;

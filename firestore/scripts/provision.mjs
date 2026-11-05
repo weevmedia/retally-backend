@@ -68,6 +68,35 @@ async function writeSchemaRegistry() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 1b. App version gate (config/appVersion) — created only if missing so a release bump made in
+// the console is never rolled back by re-running provisioning.
+// ---------------------------------------------------------------------------------------------
+async function writeAppVersionConfig() {
+  const ref = db.doc("config/appVersion");
+  if ((await ref.get()).exists) {
+    console.log("· config/appVersion exists — left as is");
+    return;
+  }
+  await ref.set({
+    android: {
+      latest: "1.0.0",
+      minSupported: "1.0.0",
+      storeUrl: "https://play.google.com/store/apps/details?id=com.weevmedia.retally",
+      message: "",
+    },
+    ios: {
+      latest: "1.0.0",
+      minSupported: "1.0.0",
+      // Replace <APP_ID> with the numeric App Store id once the app is listed.
+      storeUrl: "https://apps.apple.com/app/id<APP_ID>",
+      message: "",
+    },
+    updatedAt: now,
+  });
+  console.log("✔ config/appVersion");
+}
+
+// ---------------------------------------------------------------------------------------------
 // 2. Reference data
 // ---------------------------------------------------------------------------------------------
 const MERCHANTS = [
@@ -231,6 +260,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 (async () => {
   console.log(`Provisioning ReTally schema v${SCHEMA_VERSION} → ${process.env.FIRESTORE_EMULATOR_HOST ? "EMULATOR" : "cloud project"}`);
   await writeSchemaRegistry();
+  await writeAppVersionConfig();
   await seedCatalogs();
   if (DEMO) {
     if (!process.env.FIRESTORE_EMULATOR_HOST && !process.argv.includes("--i-know-this-is-not-prod")) {

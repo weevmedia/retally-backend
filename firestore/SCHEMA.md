@@ -251,9 +251,26 @@ shows up as a new device.
 | platform | string | `android` \| `ios` |
 | model | string | e.g. `Google Pixel 8`, `iPhone15,2` |
 | osVersion | string | e.g. `15`, `18.1` |
-| appVersion | string | e.g. `1.4.0 (42)` |
+| appVersion | string | marketing version only, e.g. `1.4.0` |
 | firstSeenAt | timestamp | first registration |
 | lastSeenAt | timestamp | latest registration |
 
 `deviceOwners/{installationId}` → `{ uid, updatedAt }` (functions only) tracks the current owner;
 signing into another account on the same phone moves the device there.
+
+## config/appVersion  (console w, any signed-in user r)
+
+The app-update gate. Read once per launch (cached 6 h on the device) by every install, guests
+included; compared against the running build's marketing version. Bump `latest` when a build
+goes live; raise `minSupported` only when older builds no longer work with the backend — every
+install below it is locked to an "Update required" screen until it updates.
+
+| field | type | notes |
+|---|---|---|
+| android.latest / ios.latest | string | newest version on that store, e.g. `1.2.0` |
+| android.minSupported / ios.minSupported | string | oldest version still allowed to run |
+| android.storeUrl / ios.storeUrl | string | Play / App Store page the Update button opens |
+| android.message / ios.message | string | optional one-liner shown with the nudge |
+| updatedAt | timestamp | |
+
+Version strings compare numerically part by part (`1.10.0` > `1.9.0`); build suffixes are ignored.
