@@ -12,7 +12,7 @@
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   header { background:var(--card); border-bottom:1px solid var(--line); }
   .bar { max-width:860px; margin:0 auto; padding:14px 20px; display:flex; align-items:center; gap:10px; }
-  .logo { width:30px; height:30px; border-radius:9px; background:var(--brand); display:grid; place-items:center; color:#fff; font-weight:800; }
+  .logo { width:30px; height:30px; border-radius:9px; display:block; }
   .bar strong { font-size:18px; }
   .bar nav { margin-left:auto; display:flex; gap:16px; font-size:14px; }
   .bar nav a { color:var(--muted); text-decoration:none; }
@@ -35,13 +35,15 @@
   .toc li { break-inside:avoid; }
   @media (max-width:640px) { h1 { font-size:26px; } .toc { columns:1; } .card { padding:18px; } table, thead, tbody, tr, th, td { display:block; } thead { display:none; } td { border-top:none; padding:4px 0; } tr { border-top:1px solid var(--line); padding:10px 0; } td:first-child { font-weight:600; } }
   footer { color:var(--muted); font-size:13px; text-align:center; padding:24px 20px 40px; }
+  /* Inside the ReTally app (?app=1): the app draws its own top bar, so drop the site header/footer. */
+  .in-app header, .in-app footer { display:none; }
 </style>
 </head>
 <body>
-<header><div class="bar"><span class="logo">R</span><strong>ReTally</strong><nav><a href="/privacy">Privacy</a><a href="/terms" aria-current="page">Terms</a><a href="/support">Support</a></nav></div></header>
+<header><div class="bar"><img class="logo" src="/app-icon.png" alt="ReTally"><strong>ReTally</strong><nav><a href="/privacy">Privacy</a><a href="/terms" aria-current="page">Terms</a><a href="/support">Support</a></nav></div></header>
 <main>
   <h1>Terms of Use</h1>
-  <div class="meta">Effective October 25, 2026 · Last updated October 25, 2026</div>
+  <div class="meta">Effective October 30, 2026 · Last updated October 30, 2026</div>
 
   <div class="card summary">
     <strong>The short version</strong>
@@ -117,7 +119,7 @@
 
   <div class="card">
     <h2>9. Ads and third-party services</h2>
-    <p>The App is free and shows ads, served by Google AdMob. The Services also rely on third parties such as Google (Firebase, Gemini, Sign-In) and Apple (Sign in with Apple), whose own terms and privacy policies apply to your use of their services. We're not responsible for third-party services, ads or websites.</p>
+    <p>The App is free and shows ads, served by Google AdMob. The Services also rely on third parties such as Google (Firebase, AI services, Sign-In) and Apple (Sign in with Apple), whose own terms and privacy policies apply to your use of their services. We're not responsible for third-party services, ads or websites.</p>
   </div>
 
   <div class="card">
@@ -132,7 +134,7 @@
 
   <div class="card">
     <h2>12. Limitation of liability</h2>
-    <p>TO THE FULLEST EXTENT ALLOWED BY LAW, WEEV MEDIA AND ITS OWNERS, EMPLOYEES AND CONTRACTORS WON'T BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, SAVINGS, DATA OR GOODWILL, ARISING FROM OR RELATED TO THE SERVICES, EVEN IF WARNED THEY WERE POSSIBLE. OUR TOTAL LIABILITY FOR ANY CLAIM RELATED TO THE SERVICES IS LIMITED TO THE GREATER OF THE AMOUNT YOU PAID US FOR THE SERVICES IN THE 12 MONTHS BEFORE THE CLAIM, OR US $50. Some places don't allow these limits, so some may not apply to you; nothing here limits liability that can't be limited by law.</p>
+    <p>TO THE FULLEST EXTENT ALLOWED BY LAW, WEEV MEDIA AND ITS OWNERS, EMPLOYEES AND CONTRACTORS WON'T BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, SAVINGS, DATA OR GOODWILL, ARISING FROM OR RELATED TO THE SERVICES, EVEN IF WARNED THEY WERE POSSIBLE. OUR TOTAL LIABILITY FOR ANY CLAIM RELATED TO THE SERVICES IS LIMITED TO THE GREATER OF THE AMOUNT YOU PAID US FOR THE SERVICES IN THE 12 MONTHS BEFORE THE CLAIM, OR US $10. Some places don't allow these limits, so some may not apply to you; nothing here limits liability that can't be limited by law.</p>
   </div>
 
   <div class="card">
@@ -160,6 +162,17 @@
     <p>Weev Media · Massachusetts, USA<br>Email: <a href="mailto:support-retally@weevmedia.com">support-retally@weevmedia.com</a></p>
   </div>
 </main>
-<footer>© 2026 Weev Media · <a href="/privacy">Privacy Policy</a> · <a href="/support">Support</a></footer>
+<footer>© 2026-2027 Weev Media · <a href="/privacy">Privacy Policy</a> · <a href="/support">Support</a></footer>
+<script>
+  // Opened from the ReTally app: hide the site header/footer and keep ?app=1 on our own links.
+  if (/[?&]app=1\b/.test(location.search)) {
+    document.documentElement.classList.add('in-app');
+    document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+      var parts = a.getAttribute('href').split('#');
+      parts[0] += parts[0].indexOf('?') < 0 ? '?app=1' : '&app=1';
+      a.setAttribute('href', parts.join('#'));
+    });
+  }
+</script>
 </body>
 </html>

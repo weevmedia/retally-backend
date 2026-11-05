@@ -12,7 +12,7 @@
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   header { background:var(--card); border-bottom:1px solid var(--line); }
   .bar { max-width:860px; margin:0 auto; padding:14px 20px; display:flex; align-items:center; gap:10px; }
-  .logo { width:30px; height:30px; border-radius:9px; background:var(--brand); display:grid; place-items:center; color:#fff; font-weight:800; }
+  .logo { width:30px; height:30px; border-radius:9px; display:block; }
   .bar strong { font-size:18px; }
   .bar nav { margin-left:auto; display:flex; gap:16px; font-size:14px; }
   .bar nav a { color:var(--muted); text-decoration:none; }
@@ -35,13 +35,15 @@
   .toc li { break-inside:avoid; }
   @media (max-width:640px) { h1 { font-size:26px; } .toc { columns:1; } .card { padding:18px; } table, thead, tbody, tr, th, td { display:block; } thead { display:none; } td { border-top:none; padding:4px 0; } tr { border-top:1px solid var(--line); padding:10px 0; } td:first-child { font-weight:600; } }
   footer { color:var(--muted); font-size:13px; text-align:center; padding:24px 20px 40px; }
+  /* Inside the ReTally app (?app=1): the app draws its own top bar, so drop the site header/footer. */
+  .in-app header, .in-app footer { display:none; }
 </style>
 </head>
 <body>
-<header><div class="bar"><span class="logo">R</span><strong>ReTally</strong><nav><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav></div></header>
+<header><div class="bar"><img class="logo" src="/app-icon.png" alt="ReTally"><strong>ReTally</strong><nav><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav></div></header>
 <main>
   <h1>Privacy Policy</h1>
-  <div class="meta">Effective October 25, 2026 · Last updated October 25, 2026</div>
+  <div class="meta">Effective October 30, 2026 · Last updated October 30, 2026</div>
 
   <div class="card summary">
     <strong>The short version</strong>
@@ -120,9 +122,9 @@
 
   <div class="card" id="ai">
     <h2>4. AI processing</h2>
-    <p>Some features use Google's Gemini AI, called from our servers (never directly from your device):</p>
+    <p>Some features use ReTally's AI, powered by Google's AI services, called from our servers (never directly from your device):</p>
     <ul>
-      <li><strong>Reading damaged receipts:</strong> if the App can't fully read a receipt on your device, the receipt photo is sent to our server and to Gemini to read it.</li>
+      <li><strong>Reading damaged receipts:</strong> if the App can't fully read a receipt on your device, the receipt photo is sent to our server and to our AI service to read it.</li>
       <li><strong>Categories and item names:</strong> receipt line descriptions (for example "KS ALMONDS") and the store name are sent to identify the product type and a plain name.</li>
       <li><strong>Smart List and tips:</strong> your purchase history is analyzed on our servers to suggest what to buy and to show tips on your Home screen.</li>
     </ul>
@@ -143,7 +145,7 @@
     <h2>6. Who we share information with</h2>
     <p>We do not sell your personal information for money. We share it only as follows:</p>
     <ul>
-      <li><strong>Service providers</strong> that run the Services for us under contract: Google Cloud and Firebase (sign-in, database, file storage, server functions, hosting, Crashlytics crash reporting), Google Gemini API (AI processing), Resend (sending sign-in code emails), Apple and Google (Sign in with Apple, Google Sign-In, push and location services on your device), and Google AdMob (ads).</li>
+      <li><strong>Service providers</strong> that run the Services for us under contract: Google Cloud and Firebase (sign-in, database, file storage, server functions, hosting, Crashlytics crash reporting), Google AI services (AI processing), Resend (sending sign-in code emails), Apple and Google (Sign in with Apple, Google Sign-In, push and location services on your device), and Google AdMob (ads).</li>
       <li><strong>Advertising partners</strong> through Google AdMob, as described in <a href="#ads">Ads</a>.</li>
       <li><strong>Legal and safety:</strong> when required by law or legal process, or to protect the rights, property or safety of users, us or others.</li>
       <li><strong>Business transfers:</strong> if the App moves to a company we form (for example a Weev Media LLC), or is involved in a merger, acquisition, financing or sale of assets, information may transfer as part of that change, subject to this policy. We'll update this policy to name the new operator.</li>
@@ -226,6 +228,17 @@
     <p>Weev Media · Massachusetts, USA<br>Email: <a href="mailto:support-retally@weevmedia.com">support-retally@weevmedia.com</a></p>
   </div>
 </main>
-<footer>© 2026 Weev Media · <a href="/terms">Terms of Use</a> · <a href="/support">Support</a></footer>
+<footer>© 2026-2027 Weev Media · <a href="/terms">Terms of Use</a> · <a href="/support">Support</a></footer>
+<script>
+  // Opened from the ReTally app: hide the site header/footer and keep ?app=1 on our own links.
+  if (/[?&]app=1\b/.test(location.search)) {
+    document.documentElement.classList.add('in-app');
+    document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+      var parts = a.getAttribute('href').split('#');
+      parts[0] += parts[0].indexOf('?') < 0 ? '?app=1' : '&app=1';
+      a.setAttribute('href', parts.join('#'));
+    });
+  }
+</script>
 </body>
 </html>

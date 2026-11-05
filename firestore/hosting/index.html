@@ -12,7 +12,7 @@
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   header { background:var(--card); border-bottom:1px solid var(--line); }
   .bar { max-width:860px; margin:0 auto; padding:14px 20px; display:flex; align-items:center; gap:10px; }
-  .logo { width:30px; height:30px; border-radius:9px; background:var(--brand); display:grid; place-items:center; color:#fff; font-weight:800; }
+  .logo { width:30px; height:30px; border-radius:9px; display:block; }
   .bar strong { font-size:18px; }
   .bar nav { margin-left:auto; display:flex; gap:16px; font-size:14px; }
   .bar nav a { color:var(--muted); text-decoration:none; }
@@ -38,13 +38,13 @@
 </style>
 </head>
 <body>
-<header><div class="bar"><span class="logo">R</span><strong>ReTally</strong><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav></div></header>
+<header><div class="bar"><img class="logo" src="/app-icon.png" alt="ReTally"><strong>ReTally</strong><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav></div></header>
 <main>
   <h1>ReTally</h1>
   <div class="meta">Scan receipts · catch double charges · shop smarter</div>
   <div class="card summary"><p style="margin:0">ReTally reads your store receipts, flags items charged twice, tracks spending against a budget, builds your shopping list from what you actually buy, and alerts you to food recalls and price drops.</p></div>
   <div class="card"><p style="margin:0"><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Use</a> · <a href="/support">Support</a></p></div>
 </main>
-<footer>© 2026 Weev Media</footer>
+<footer>© 2026-2027 Weev Media</footer>
 </body>
 </html>

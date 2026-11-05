@@ -44,8 +44,8 @@ import { isValidEmail } from "../shared/validation";
 const CODE_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
 const MAX_REQUESTS_PER_HOUR = 3;
-// Sandbox sender until a domain is verified in Resend; then switch to noreply@yourdomain.
-const FROM_ADDRESS = "ReTally <onboarding@resend.dev>";
+// Verified sender domain (weevmedia.com, verified in Resend) — OTP codes can now go to any email.
+const FROM_ADDRESS = "ReTally <noreply@weevmedia.com>";
 
 interface OtpDoc {
   codeHash: string;
@@ -209,47 +209,39 @@ export const verifyOtp = onRequest(
       return;
     }
 
-    // TEMP-TEST-BACKDOOR: "111111" always verifies without a stored code.
-    // REMOVE BEFORE RELEASE - this bypasses OTP authentication.
-    const isTestCode = code === "111111";
-
     const db = getFirestore();
     const ref = db.collection("otpCodes").doc(sha256(`otp:${email}`));
-    if (isTestCode) {
-      console.log(`[auth-debug] TEST BACKDOOR v2 accepted for email=${email}`);
-    } else {
-      const snap = await ref.get();
-      if (!snap.exists) {
-        res.status(404).json({ error: "no-code" });
-        return;
-      }
-      const data = snap.data() as OtpDoc;
-
-      if (data.expiresAt.toMillis() <= Date.now()) {
-        await ref.delete();
-        res.status(410).json({ error: "expired" });
-        return;
-      }
-      if (data.attempts >= MAX_ATTEMPTS) {
-        await ref.delete();
-        res.status(429).json({ error: "too-many-attempts" });
-        return;
-      }
-
-      const pepper = process.env.OTP_PEPPER ?? "";
-      const expected = Buffer.from(data.codeHash, "hex");
-      const actual = Buffer.from(sha256(`${pepper}:${code}`), "hex");
-      const matches =
-        expected.length === actual.length && timingSafeEqual(expected, actual);
-      if (!matches) {
-        await ref.update({ attempts: FieldValue.increment(1) });
-        res.status(401).json({ error: "mismatch" });
-        return;
-      }
-
-      // Single-use: burn the code before minting the token.
-      await ref.delete();
+    const snap = await ref.get();
+    if (!snap.exists) {
+      res.status(404).json({ error: "no-code" });
+      return;
     }
+    const data = snap.data() as OtpDoc;
+
+    if (data.expiresAt.toMillis() <= Date.now()) {
+      await ref.delete();
+      res.status(410).json({ error: "expired" });
+      return;
+    }
+    if (data.attempts >= MAX_ATTEMPTS) {
+      await ref.delete();
+      res.status(429).json({ error: "too-many-attempts" });
+      return;
+    }
+
+    const pepper = process.env.OTP_PEPPER ?? "";
+    const expected = Buffer.from(data.codeHash, "hex");
+    const actual = Buffer.from(sha256(`${pepper}:${code}`), "hex");
+    const matches =
+      expected.length === actual.length && timingSafeEqual(expected, actual);
+    if (!matches) {
+      await ref.update({ attempts: FieldValue.increment(1) });
+      res.status(401).json({ error: "mismatch" });
+      return;
+    }
+
+    // Single-use: burn the code before minting the token.
+    await ref.delete();
 
     const auth = getAuth();
     let userRecord;

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How it works · ReTally</title>
+<meta name="description" content="Scan a receipt and ReTally reads every line, flags anything the cashier rang up twice, and keeps your monthly budget on track.">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#0f172a; --muted:#5b6474; --line:#e5e7eb; --brand:#10b981; --brand-ink:#047857; --tint:#ecfdf5;
+          --warn:#f59e0b; --warn-tint:#fef3c7; --warn-ink:#92400e; --danger:#ef4444; --paper:#fffdf8; --phone:#0f172a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1210; --card:#121a18; --ink:#e7eeeb; --muted:#9aa8a2; --line:#24302c; --brand:#34d399; --brand-ink:#6ee7b7; --tint:#10251e;
+          --warn-tint:#3a2a08; --warn-ink:#fcd34d; --phone:#020617; } }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  header { background:var(--card); border-bottom:1px solid var(--line); }
+  .bar { max-width:860px; margin:0 auto; padding:14px 20px; display:flex; align-items:center; gap:10px; }
+  .logo { width:30px; height:30px; border-radius:9px; display:block; }
+  .bar strong { font-size:18px; }
+  .bar nav { margin-left:auto; display:flex; gap:16px; font-size:14px; }
+  .bar nav a { color:var(--muted); text-decoration:none; }
+  main { max-width:860px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:30px; line-height:1.2; margin:4px 0 6px; }
+  .lead { color:var(--muted); margin:0 0 20px; }
+  footer { color:var(--muted); font-size:13px; text-align:center; padding:20px 16px 36px; }
+  footer a { color:var(--brand-ink); }
+  /* In the app's web view (?app=1): no site header/footer, tighter top. */
+  .in-app header, .in-app footer { display:none; }
+  .in-app main { padding-top:16px; }
+
+  /* ---------- Demo "video" ---------- */
+  .demo { display:flex; justify-content:center; margin:8px 0 28px; }
+  .phone { position:relative; width:250px; height:470px; border-radius:38px; background:var(--phone); padding:12px;
+           box-shadow:0 20px 50px rgba(15,23,42,.25), inset 0 0 0 2px rgba(255,255,255,.06); }
+  .screen { position:relative; width:100%; height:100%; border-radius:28px; overflow:hidden;
+            background:radial-gradient(120% 80% at 50% 0%, #1e293b 0%, #0b1220 70%); }
+  .notch { position:absolute; top:8px; left:50%; width:74px; height:20px; transform:translateX(-50%); border-radius:12px; background:#000; z-index:5; }
+  .hint { position:absolute; top:36px; left:0; right:0; text-align:center; color:#cbd5e1; font-size:11.5px; letter-spacing:.02em; z-index:4; }
+  .hint span { display:block; position:absolute; left:0; right:0; opacity:0; }
+  .hint .h1 { animation:hint1 10s infinite; } .hint .h2 { animation:hint2 10s infinite; } .hint .h3 { animation:hint3 10s infinite; }
+
+  .receipt { position:absolute; left:26px; right:26px; top:62px; padding:14px 14px 22px; background:var(--paper); color:#1f2937;
+             font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border-radius:3px;
+             box-shadow:0 8px 22px rgba(0,0,0,.35); animation:slideIn 10s infinite;
+             -webkit-mask:linear-gradient(#000 0 0) top/100% calc(100% - 8px) no-repeat, conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/12px 8px repeat-x;
+                     mask:linear-gradient(#000 0 0) top/100% calc(100% - 8px) no-repeat, conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/12px 8px repeat-x; }
+  .store { text-align:center; font-weight:700; letter-spacing:.12em; }
+  .sub { text-align:center; font-size:10px; color:#6b7280; margin-bottom:6px; }
+  .rule { border-top:1px dashed #cbd5e1; margin:6px 0; }
+  .row { display:flex; justify-content:space-between; padding:1px 4px; border-radius:4px; position:relative; }
+  .row .tick { position:absolute; left:-12px; color:var(--brand); font-weight:700; opacity:0; }
+  .row.r1 { animation:read 10s infinite; } .row.r1 .tick { animation:tick 10s infinite; }
+  .row.r2 { animation:dup 10s infinite; }  .row.r2 .tick { animation:tick2 10s infinite; }
+  .row.r3 { animation:read3 10s infinite; } .row.r3 .tick { animation:tick3 10s infinite; }
+  .row.r4 { animation:dup 10s infinite; }  .row.r4 .tick { animation:tick4 10s infinite; }
+  .row.r5 { animation:read5 10s infinite; } .row.r5 .tick { animation:tick5 10s infinite; }
+  .total { display:flex; justify-content:space-between; font-weight:700; padding:0 4px; }
+  /* Small "2×" badge in the tick column, so it never covers the item or price. */
+  .flag { position:absolute; left:-13px; top:50%; width:13px; height:13px; margin-top:-6.5px; border-radius:50%; background:var(--danger); color:#fff;
+          display:grid; place-items:center; font:800 7.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; opacity:0; transform:scale(.4);
+          animation:flag 10s infinite; }
+
+  .frame { position:absolute; left:16px; right:16px; top:54px; height:262px; z-index:3; pointer-events:none; animation:frameFade 10s infinite; }
+  .frame i { position:absolute; width:22px; height:22px; border:3px solid var(--brand); }
+  .frame i:nth-child(1) { top:0; left:0; border-right:0; border-bottom:0; border-top-left-radius:8px; }
+  .frame i:nth-child(2) { top:0; right:0; border-left:0; border-bottom:0; border-top-right-radius:8px; }
+  .frame i:nth-child(3) { bottom:0; left:0; border-right:0; border-top:0; border-bottom-left-radius:8px; }
+  .frame i:nth-child(4) { bottom:0; right:0; border-left:0; border-top:0; border-bottom-right-radius:8px; }
+  .scanline { position:absolute; left:6px; right:6px; height:3px; top:0; border-radius:3px; background:var(--brand);
+              box-shadow:0 0 14px 4px rgba(16,185,129,.55); animation:sweep 10s infinite; }
+
+  .shutter { position:absolute; bottom:22px; left:50%; width:54px; height:54px; margin-left:-27px; border-radius:50%;
+             border:4px solid #fff; background:rgba(255,255,255,.18); z-index:4; animation:press 10s infinite; }
+  .flash { position:absolute; inset:0; background:#fff; opacity:0; z-index:6; animation:flash 10s infinite; pointer-events:none; }
+
+  .sheet { position:absolute; left:10px; right:10px; bottom:10px; z-index:7; background:var(--card); color:var(--ink); border-radius:18px; padding:14px;
+           box-shadow:0 -6px 24px rgba(0,0,0,.35); transform:translateY(120%); animation:sheet 10s infinite;
+           font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .sheet .pill { display:inline-block; background:var(--warn-tint); color:var(--warn-ink); font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:999px; letter-spacing:.03em; }
+  .sheet .big { font-size:17px; font-weight:800; margin:6px 0 2px; }
+  .sheet .small { font-size:12px; color:var(--muted); }
+  .sheet .btn { margin-top:10px; background:var(--brand); color:#fff; text-align:center; border-radius:10px; padding:8px; font-weight:700; font-size:13px; }
+
+  /* Timeline (10 s loop): 0–1 receipt in · 1–1.4 shutter · 1.4–3.6 scan · 3.6–5.2 lines read · 5.2–7 duplicate flagged · 7–9.4 result · fade */
+  @keyframes slideIn { 0% { transform:translateY(40px) rotate(-3deg); opacity:0; } 9% { transform:translateY(0) rotate(-1deg); opacity:1; } 14%,100% { transform:none; opacity:1; } }
+  @keyframes press   { 0%,10% { transform:scale(1); } 12% { transform:scale(.86); } 14%,100% { transform:scale(1); } }
+  @keyframes flash   { 0%,12% { opacity:0; } 13% { opacity:.65; } 16%,100% { opacity:0; } }
+  @keyframes frameFade { 0%,12% { opacity:.5; } 14%,36% { opacity:1; } 40%,100% { opacity:0; } }
+  @keyframes sweep   { 0%,14% { top:0; opacity:0; } 15% { opacity:1; } 25% { top:256px; } 35% { top:0; } 36% { opacity:1; } 37%,100% { opacity:0; top:0; } }
+  @keyframes hint1   { 0%,2% { opacity:0; } 4%,12% { opacity:1; } 14%,100% { opacity:0; } }
+  @keyframes hint2   { 0%,14% { opacity:0; } 16%,50% { opacity:1; } 52%,100% { opacity:0; } }
+  @keyframes hint3   { 0%,52% { opacity:0; } 54%,94% { opacity:1; } 97%,100% { opacity:0; } }
+  @keyframes read    { 0%,37% { background:transparent; } 39%,94% { background:rgba(16,185,129,.12); } 97%,100% { background:transparent; } }
+  @keyframes read3   { 0%,41% { background:transparent; } 43%,94% { background:rgba(16,185,129,.12); } 97%,100% { background:transparent; } }
+  @keyframes read5   { 0%,45% { background:transparent; } 47%,94% { background:rgba(16,185,129,.12); } 97%,100% { background:transparent; } }
+  @keyframes tick    { 0%,37% { opacity:0; } 39%,94% { opacity:1; } 97%,100% { opacity:0; } }
+  @keyframes tick2   { 0%,39% { opacity:0; } 41%,50% { opacity:1; } 52%,100% { opacity:0; } }
+  @keyframes tick3   { 0%,41% { opacity:0; } 43%,94% { opacity:1; } 97%,100% { opacity:0; } }
+  @keyframes tick4   { 0%,43% { opacity:0; } 45%,50% { opacity:1; } 52%,100% { opacity:0; } }
+  @keyframes tick5   { 0%,45% { opacity:0; } 47%,94% { opacity:1; } 97%,100% { opacity:0; } }
+  @keyframes dup     { 0%,39% { background:transparent; color:inherit; } 41%,50% { background:rgba(16,185,129,.12); color:inherit; }
+                       53%,57% { background:#fee2e2; color:#b91c1c; } 55% { transform:translateX(2px); } 56% { transform:translateX(-2px); }
+                       58%,94% { background:#fee2e2; color:#b91c1c; transform:none; } 97%,100% { background:transparent; color:inherit; } }
+  @keyframes flag    { 0%,53% { opacity:0; transform:scale(.4); } 56%,94% { opacity:1; transform:scale(1); } 97%,100% { opacity:0; } }
+  @keyframes sheet   { 0%,70% { transform:translateY(120%); } 74%,94% { transform:translateY(0); } 98%,100% { transform:translateY(120%); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .receipt, .row, .tick, .flag, .frame, .scanline, .shutter, .flash, .sheet, .hint span { animation:none !important; }
+    .scanline, .flash, .hint .h1, .hint .h2 { opacity:0; } .hint .h3 { opacity:1; }
+    .row .tick { opacity:1; } .row.r2, .row.r4 { background:#fee2e2; color:#b91c1c; } .flag { opacity:1; transform:none; }
+    .frame { opacity:0; } .sheet { transform:none; }
+  }
+
+  /* ---------- Steps ---------- */
+  .steps { display:grid; gap:12px; }
+  @media (min-width:640px) { .steps { grid-template-columns:1fr 1fr; } }
+  .step { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; display:flex; gap:14px; }
+  .num { flex:none; width:32px; height:32px; border-radius:50%; background:var(--tint); color:var(--brand-ink); display:grid; place-items:center; font-weight:800; }
+  .step h2 { font-size:17px; margin:2px 0 4px; }
+  .step p { margin:0; color:var(--muted); font-size:15px; }
+  .tips { background:var(--tint); border-radius:16px; padding:16px 18px; margin-top:16px; }
+  .tips h2 { font-size:17px; margin:0 0 6px; }
+  .tips ul { margin:0; padding-left:20px; }
+  .tips li { margin:3px 0; }
+  .note { color:var(--muted); font-size:13.5px; margin-top:16px; }
+  .note a { color:var(--brand-ink); }
+</style>
+</head>
+<body>
+<header><div class="bar"><img class="logo" src="/app-icon.png" alt="ReTally"><strong>ReTally</strong><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav></div></header>
+<main>
+  <h1>How ReTally works</h1>
+  <p class="lead">Scan a receipt and ReTally reads every line, flags anything the cashier rang up twice, and keeps your monthly budget on track.</p>
+
+  <div class="demo" aria-label="Animation: a receipt is scanned, each line is read, and a duplicate milk charge is flagged" role="img">
+    <div class="phone"><div class="screen">
+      <div class="notch"></div>
+      <div class="hint" aria-hidden="true">
+        <span class="h1">Line up the whole receipt</span>
+        <span class="h2">Reading every line…</span>
+        <span class="h3">Double charge found</span>
+      </div>
+      <div class="receipt" aria-hidden="true">
+        <div class="store">FRESH MART</div>
+        <div class="sub">Oct 29, 2026 · 5:42 PM</div>
+        <div class="rule"></div>
+        <div class="row r1"><span class="tick">✓</span><span>Bananas</span><span>1.29</span></div>
+        <div class="row r2"><span class="tick">✓</span><span>Milk 2% 1gal</span><span>3.49</span><span class="flag">2×</span></div>
+        <div class="row r3"><span class="tick">✓</span><span>Eggs 12ct</span><span>4.99</span></div>
+        <div class="row r4"><span class="tick">✓</span><span>Milk 2% 1gal</span><span>3.49</span><span class="flag">2×</span></div>
+        <div class="row r5"><span class="tick">✓</span><span>Sourdough</span><span>2.79</span></div>
+        <div class="rule"></div>
+        <div class="total"><span>TOTAL</span><span>16.05</span></div>
+      </div>
+      <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i><div class="scanline"></div></div>
+      <div class="shutter" aria-hidden="true"></div>
+      <div class="flash" aria-hidden="true"></div>
+      <div class="sheet" aria-hidden="true">
+        <span class="pill">DUPLICATE</span>
+        <div class="big">$3.49 to get back</div>
+        <div class="small">Milk 2% was charged twice at Fresh Mart.</div>
+        <div class="btn">Show the cashier</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="steps">
+    <div class="step"><div class="num">1</div><div><h2>Scan your receipt</h2><p>Tap the scan button and hold your phone over the receipt. ReTally finds the edges and takes the photo for you.</p></div></div>
+    <div class="step"><div class="num">2</div><div><h2>Every line is read</h2><p>Store, date, each item and its price are pulled out automatically. You can fix anything before saving.</p></div></div>
+    <div class="step"><div class="num">3</div><div><h2>Double charges are flagged</h2><p>The same item at the same price showing up twice gets marked, so you can ask the store for it back.</p></div></div>
+    <div class="step"><div class="num">4</div><div><h2>Your budget stays on track</h2><p>Each receipt adds to this month's spending. Home shows where you'll land by month-end, in green, amber or red.</p></div></div>
+  </div>
+
+  <div class="tips">
+    <h2>Tips for a good scan</h2>
+    <ul>
+      <li>Lay the receipt flat on a dark surface.</li>
+      <li>Use good light and avoid shadows across the text.</li>
+      <li>Fit the whole receipt in the frame. For long ones, scan the top and bottom.</li>
+    </ul>
+  </div>
+
+  <p class="note">As a guest, your receipts stay on your phone. Sign in to back them up and restore them on another device. <a href="/privacy">Privacy policy</a></p>
+</main>
+<footer>© 2026-2027 Weev Media · <a href="/privacy">Privacy</a> · <a href="/terms">Terms of Use</a> · <a href="/support">Support</a></footer>
+<script>
+  // Opened from the app's web view: hide the site header and footer.
+  if (/[?&]app=1\b/.test(location.search)) document.documentElement.classList.add('in-app');
+</script>
+</body>
+</html>
