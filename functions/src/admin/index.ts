@@ -7,7 +7,7 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { REGION } from "../shared/constants";
-import { audit, requireAdmin, text } from "./common";
+import { ADMIN_ENFORCE_APP_CHECK, audit, requireAdmin, text } from "./common";
 import { forgetStoreKeyIndex, loadStoreKeyIndex, newStoreDoc } from "../stores";
 import { isPlausibleStoreName, storeKeyOf } from "../shared/storeKey";
 
@@ -59,7 +59,7 @@ function aliasesOf(v: unknown): string[] {
 
 // ---------- stores (`store_icons`, served to the app by getStoreIcons) ----------
 
-export const adminUpsertStore = onCall({ region: REGION }, async (request) => {
+export const adminUpsertStore = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
 
@@ -96,7 +96,7 @@ export const adminUpsertStore = onCall({ region: REGION }, async (request) => {
  * receipt count is added, and the source is deleted. Used to map an OCR variant ("WF.OLESAL")
  * onto the real store.
  */
-export const adminMergeStore = onCall({ region: REGION }, async (request) => {
+export const adminMergeStore = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const fromKey = text(d.fromKey, "fromKey", 64);
@@ -136,7 +136,7 @@ const DISCOVER_SCAN_LIMIT = 20000;
  * Backfill: reads every receipt's store name, creates `new` placeholders for stores that aren't in
  * the table yet, and recounts `stats.receiptCount` on every matched store.
  */
-export const adminDiscoverStores = onCall({ region: REGION, memory: "512MiB", timeoutSeconds: 300 }, async (request) => {
+export const adminDiscoverStores = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK, memory: "512MiB", timeoutSeconds: 300 }, async (request) => {
   const admin = await requireAdmin(request);
   const db = getFirestore();
   const receipts = await db.collectionGroup("receipts").select("storeName", "purchaseDate", "deletedAt").limit(DISCOVER_SCAN_LIMIT).get();
@@ -183,7 +183,7 @@ export const adminDiscoverStores = onCall({ region: REGION, memory: "512MiB", ti
   return { ok: true, scanned: receipts.size, created, updated, skipped, truncated: receipts.size >= DISCOVER_SCAN_LIMIT };
 });
 
-export const adminDeleteStore = onCall({ region: REGION }, async (request) => {
+export const adminDeleteStore = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const key = text((request.data as Record<string, unknown> | undefined)?.key, "key", 64);
   const ref = getFirestore().collection(STORES).doc(key);
@@ -235,7 +235,7 @@ function categoriesOf(v: unknown): ItemCategory[] {
 }
 
 /** Replaces the whole category list (order matters: the first one is the app's default). */
-export const adminSaveCategories = onCall({ region: REGION }, async (request) => {
+export const adminSaveCategories = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const categories = categoriesOf((request.data as Record<string, unknown> | undefined)?.categories);
   const ref = getFirestore().doc(CATEGORIES_DOC);

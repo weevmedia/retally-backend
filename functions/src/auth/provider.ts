@@ -24,6 +24,8 @@ import { OAuth2Client } from "google-auth-library";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { createHash } from "crypto";
 import { REGION } from "../shared/constants";
+import { requireAppCheck } from "../shared/appCheck";
+import { limitByIp } from "../shared/rateLimit";
 
 const GOOGLE_WEB_CLIENT_IDS = defineString("GOOGLE_WEB_CLIENT_IDS", {
   description: "Google OAuth client IDs accepted as token audience (Web client ID for Android, iOS client ID), comma-separated",
@@ -68,6 +70,8 @@ export const signInWithProvider = onRequest({ region: REGION }, async (req, res)
     res.status(405).json({ error: "method-not-allowed" });
     return;
   }
+  if (!(await requireAppCheck(req, res, "signInWithProvider"))) return;
+  if (!(await limitByIp(req, res, "signInWithProvider", { max: 30, windowSeconds: 3600 }))) return;
   const provider = String(req.body?.provider ?? "");
   const idToken = String(req.body?.idToken ?? "");
   const nonce = String(req.body?.nonce ?? "");

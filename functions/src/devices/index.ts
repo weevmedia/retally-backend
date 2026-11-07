@@ -12,7 +12,7 @@
  */
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { REGION } from "../shared/constants";
+import { ENFORCE_APP_CHECK_ON_CALL, REGION } from "../shared/constants";
 
 const ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const PLATFORMS = ["android", "ios"];
@@ -25,7 +25,7 @@ function str(v: unknown, field: string, max: number): string {
   return v.trim().slice(0, max);
 }
 
-export const registerDevice = onCall({ region: REGION }, async (request) => {
+export const registerDevice = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK_ON_CALL }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
   const uid = request.auth.uid;
   const d = (request.data ?? {}) as Record<string, unknown>;

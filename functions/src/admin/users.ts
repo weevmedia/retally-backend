@@ -16,7 +16,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getAuth, UserRecord } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { REGION } from "../shared/constants";
-import { Admin, audit, requireAdmin } from "./common";
+import { ADMIN_ENFORCE_APP_CHECK, Admin, audit, requireAdmin } from "./common";
 
 const MAX_USERS = 10000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -118,7 +118,7 @@ function snapshot(u: UserRecord) {
 
 // ---------- list ----------
 
-export const adminListUsers = onCall({ region: REGION, memory: "512MiB", timeoutSeconds: 60 }, async (request) => {
+export const adminListUsers = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK, memory: "512MiB", timeoutSeconds: 60 }, async (request) => {
   await requireAdmin(request);
 
   const users: UserDto[] = [];
@@ -171,7 +171,7 @@ export const adminListUsers = onCall({ region: REGION, memory: "512MiB", timeout
 
 // ---------- enable / disable ----------
 
-export const adminSetUserDisabled = onCall({ region: REGION }, async (request) => {
+export const adminSetUserDisabled = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const uid = uidOf(d.uid);
@@ -209,7 +209,7 @@ async function setAdminClaim(admin: Admin, user: UserRecord, makeAdmin: boolean)
   return after;
 }
 
-export const adminSetAdmin = onCall({ region: REGION }, async (request) => {
+export const adminSetAdmin = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   if (typeof d.admin !== "boolean") throw new HttpsError("invalid-argument", "admin must be true or false.");
@@ -226,7 +226,7 @@ export const adminSetAdmin = onCall({ region: REGION }, async (request) => {
  * password yet) and return a link where they set their password. The link is returned, not emailed:
  * share it with the person yourself.
  */
-export const adminInviteAdmin = onCall({ region: REGION }, async (request) => {
+export const adminInviteAdmin = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const raw = (request.data as Record<string, unknown> | undefined)?.email;
   const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";

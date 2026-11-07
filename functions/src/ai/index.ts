@@ -18,6 +18,8 @@
  */
 
 import { onRequest } from "firebase-functions/v2/https";
+import { requireAppCheck } from "../shared/appCheck";
+import { limitByIp } from "../shared/rateLimit";
 import { getAuth } from "firebase-admin/auth";
 import { REGION } from "../shared/constants";
 
@@ -103,6 +105,9 @@ function extractJson(text: string): string {
  * fails fast with no retry.
  */
 const RETRYABLE_GEMINI_STATUS = new Set([408, 429, 500, 503, 504]);
+
+/** ~6 MB of base64 (≈4.5 MB JPEG): plenty for a receipt photo, a ceiling for abuse. */
+const MAX_IMAGE_BASE64_CHARS = 6 * 1024 * 1024;
 // Single quick retry: if Gemini is still overloaded after one backoff, fail fast
 // so the app falls back to the on-device parse instead of hanging. Worst case
 // (~15s) stays well inside the 60s function and app timeouts.
@@ -143,6 +148,9 @@ export const parseTornReceipt = onRequest(
       res.status(405).json({ ok: false, error: "method-not-allowed" });
       return;
     }
+    if (!(await requireAppCheck(req, res, "parseTornReceipt"))) return;
+    // Gemini costs real money per call: bound it per address on top of the sign-in below.
+    if (!(await limitByIp(req, res, "parseTornReceipt", { max: 60, windowSeconds: 3600 }))) return;
 
     // Verify Firebase auth.
     const authHeader = String(req.headers.authorization ?? "");
@@ -151,14 +159,25 @@ export const parseTornReceipt = onRequest(
       res.status(401).json({ ok: false, error: "unauthorized" });
       return;
     }
+    let signInProvider: string | undefined;
     try {
-      await getAuth().verifyIdToken(idToken);
+      signInProvider = (await getAuth().verifyIdToken(idToken)).firebase?.sign_in_provider;
     } catch {
       res.status(401).json({ ok: false, error: "invalid-token" });
       return;
     }
+    // Guests stay local-only (same rule as the shopping list): anonymous accounts are free to
+    // mint, so a script could otherwise burn the Gemini budget with them.
+    if (signInProvider === "anonymous") {
+      res.status(403).json({ ok: false, error: "sign-in-required" });
+      return;
+    }
 
     const imageBase64 = String(req.body?.imageBase64 ?? "");
+    if (imageBase64.length > MAX_IMAGE_BASE64_CHARS) {
+      res.status(413).json({ ok: false, error: "image-too-large" });
+      return;
+    }
     const mimeType = String(req.body?.mimeType ?? "image/jpeg");
     if (!imageBase64 || imageBase64.length < 100) {
       res.status(400).json({ ok: false, error: "missing-image" });

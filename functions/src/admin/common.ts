@@ -16,6 +16,14 @@ export interface Admin {
  * who was disabled or demoted keeps a valid ID token for up to an hour, so the claim alone isn't
  * enough. One Auth lookup per call.
  */
+/**
+ * App Check for the admin console (reCAPTCHA Enterprise in retally-webapp). Admin calls are
+ * already gated by the `admin` claim; this adds the bot shield. Flip to true only after the
+ * site key is configured in the web app (`appCheckSiteKey`) — otherwise every admin call
+ * fails closed with `unauthenticated`.
+ */
+export const ADMIN_ENFORCE_APP_CHECK = false;
+
 export async function requireAdmin(request: CallableRequest<unknown>): Promise<Admin> {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
   const deny = (why: string): never => {

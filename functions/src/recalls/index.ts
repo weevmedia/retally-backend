@@ -15,7 +15,7 @@ import { onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import { getAuth } from "firebase-admin/auth";
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
-import { REGION } from "../shared/constants";
+import { ENFORCE_APP_CHECK_ON_CALL, REGION } from "../shared/constants";
 import { groupItems } from "../shopping/itemGrouping";
 import { loadAliases } from "../shopping/naming";
 import { Recall, fetchFdaRecalls, fetchFsisRecalls } from "./sources";
@@ -133,7 +133,7 @@ async function purchasedItems(uid: string): Promise<PurchasedItem[]> {
 export const getRecalls = onCall(
   // A few instances are plenty for a list that changes a few times a day; capping them also caps
   // how often the government sources get called (each instance keeps its own copy).
-  { region: REGION, timeoutSeconds: 60, memory: "512MiB", maxInstances: 5 },
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK_ON_CALL, timeoutSeconds: 60, memory: "512MiB", maxInstances: 5 },
   async (request) => {
     // Recalls are public; matching needs the shopper's synced receipts, so signed-in only.
     const uid = request.auth?.uid;

@@ -5,7 +5,7 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { REGION } from "../shared/constants";
-import { audit, requireAdmin, text } from "./common";
+import { ADMIN_ENFORCE_APP_CHECK, audit, requireAdmin, text } from "./common";
 
 export const APP_VERSION_DOC = "config/appVersion";
 const PLATFORMS = ["android", "ios"] as const;
@@ -90,7 +90,7 @@ async function lockedOutCounts(min: Record<Platform, string>): Promise<Record<Pl
 }
 
 /** Current gate plus, per platform, how many recent installs sit below `minSupported`. */
-export const adminGetAppVersion = onCall({ region: REGION }, async (request) => {
+export const adminGetAppVersion = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   await requireAdmin(request);
   const snap = await getFirestore().doc(APP_VERSION_DOC).get();
   const data = (snap.data() ?? {}) as Record<string, unknown>;
@@ -112,7 +112,7 @@ export const adminGetAppVersion = onCall({ region: REGION }, async (request) => 
  * Dry run: validates a proposed gate and reports how many installs each platform's
  * `minSupported` would lock out, so the console can confirm before `adminSetAppVersion`.
  */
-export const adminPreviewAppVersion = onCall({ region: REGION }, async (request) => {
+export const adminPreviewAppVersion = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   await requireAdmin(request);
   const data = (request.data ?? {}) as Record<string, unknown>;
   const android = platformVersionOf(data.android, "android");
@@ -122,7 +122,7 @@ export const adminPreviewAppVersion = onCall({ region: REGION }, async (request)
 });
 
 /** Replaces the whole gate (both platforms) and records the change in `/adminAudit`. */
-export const adminSetAppVersion = onCall({ region: REGION }, async (request) => {
+export const adminSetAppVersion = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const data = (request.data ?? {}) as Record<string, unknown>;
   const after = { android: platformVersionOf(data.android, "android"), ios: platformVersionOf(data.ios, "ios") };

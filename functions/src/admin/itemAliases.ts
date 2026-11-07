@@ -8,7 +8,7 @@ import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { REGION } from "../shared/constants";
 import { sha256 } from "../shared/crypto";
 import { AI_CATEGORIES } from "../categories";
-import { audit, requireAdmin, text } from "./common";
+import { ADMIN_ENFORCE_APP_CHECK, audit, requireAdmin, text } from "./common";
 
 const COLLECTION = "itemAliases";
 const PAGE = 50;
@@ -42,7 +42,7 @@ function toRow(data: FirebaseFirestore.DocumentData): AliasRow {
  * - neither: most recently categorised first.
  * `next` is an opaque cursor for the following page (null at the end).
  */
-export const adminListItemAliases = onCall({ region: REGION }, async (request) => {
+export const adminListItemAliases = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const search = typeof d.search === "string" ? d.search.trim().toLowerCase().slice(0, 100) : "";
@@ -71,7 +71,7 @@ export const adminListItemAliases = onCall({ region: REGION }, async (request) =
 });
 
 /** `adminSetItemCategory({ raw, category })`: overrides the AI's answer for one receipt text. */
-export const adminSetItemCategory = onCall({ region: REGION }, async (request) => {
+export const adminSetItemCategory = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const raw = text(d.raw, "raw", 200).toLowerCase();

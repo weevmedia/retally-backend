@@ -19,7 +19,7 @@ import { DocumentData, Query, QueryDocumentSnapshot, Timestamp, getFirestore } f
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
 import { REGION } from "../shared/constants";
-import { requireAdmin } from "./common";
+import { ADMIN_ENFORCE_APP_CHECK, requireAdmin } from "./common";
 
 const SCAN_LIMIT = 5000;
 const MAX_PAGE_SIZE = SCAN_LIMIT; // the console's CSV export asks for everything in one page
@@ -306,7 +306,7 @@ async function downloadUrlOf(path: string): Promise<string | null> {
 
 // ---------- callables ----------
 
-export const adminSearchReceipts = onCall({ region: REGION, memory: "512MiB", timeoutSeconds: 60 }, async (request) => {
+export const adminSearchReceipts = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK, memory: "512MiB", timeoutSeconds: 60 }, async (request) => {
   await requireAdmin(request);
   const data = (request.data ?? {}) as Record<string, unknown>;
   const f = parseFilters(data.filters);
@@ -442,7 +442,7 @@ function positionOf(item: Record<string, unknown>): number {
   return typeof item.position === "number" && Number.isFinite(item.position) ? item.position : Number.MAX_SAFE_INTEGER;
 }
 
-export const adminGetReceipt = onCall({ region: REGION }, async (request) => {
+export const adminGetReceipt = onCall({ region: REGION, enforceAppCheck: ADMIN_ENFORCE_APP_CHECK }, async (request) => {
   await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const uid = str(d.uid, 128);

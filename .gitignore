@@ -10,3 +10,6 @@ functions/lib/
 *-firebase-adminsdk-*.json
 serviceAccount*.json
 *.json.key
+
+# Firebase CLI deploy cache
+.firebase/

@@ -11,6 +11,7 @@
  */
 
 import { onRequest } from "firebase-functions/v2/https";
+import { requireAppCheck } from "../shared/appCheck";
 import { getFirestore } from "firebase-admin/firestore";
 import { REGION } from "../shared/constants";
 import { STORES, loadStoreKeyIndex } from "../stores";
@@ -69,6 +70,7 @@ export const getCategories = onRequest({ region: REGION }, async (req, res) => {
     res.status(405).json({ ok: false, error: "method-not-allowed" });
     return;
   }
+  if (!(await requireAppCheck(req, res, "getCategories"))) return;
   try {
     const snap = await getFirestore().doc("config/itemCategories").get();
     const fromDoc = sanitizeCategories(snap.data()?.categories);
@@ -127,6 +129,7 @@ export const getStoreIcons = onRequest({ region: REGION }, async (req, res) => {
     res.status(405).json({ ok: false, error: "method-not-allowed" });
     return;
   }
+  if (!(await requireAppCheck(req, res, "getStoreIcons"))) return;
   // Batch lookup: the app re-checks its "no logo" stores in one request (launch / Receipts).
   const raw = req.query.stores;
   const names = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])

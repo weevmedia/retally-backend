@@ -9,7 +9,7 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import { getFirestore } from "firebase-admin/firestore";
-import { REGION } from "../shared/constants";
+import { ENFORCE_APP_CHECK_ON_CALL, REGION } from "../shared/constants";
 import { sha256 } from "../shared/crypto";
 import { GEMINI_LITE_MODEL, generateJson } from "../shared/gemini";
 
@@ -112,7 +112,7 @@ export async function classifyLines(raws: string[], storeName: string): Promise<
  * Any signed-in Firebase user, guests included (they scan too); at most 120 lines per call.
  */
 export const categorizeItems = onCall(
-  { region: REGION, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 60, memory: "256MiB" },
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK_ON_CALL, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 60, memory: "256MiB" },
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "sign-in-required");
     const d = (request.data ?? {}) as Record<string, unknown>;

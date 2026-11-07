@@ -29,6 +29,8 @@
  */
 
 import { onRequest } from "firebase-functions/v2/https";
+import { requireAppCheck } from "../shared/appCheck";
+import { limitByIp } from "../shared/rateLimit";
 import { getAuth } from "firebase-admin/auth";
 import {
   FieldValue,
@@ -70,6 +72,8 @@ export const lookupAccount = onRequest(
       res.status(405).json({ error: "method-not-allowed" });
       return;
     }
+    if (!(await requireAppCheck(req, res, "lookupAccount"))) return;
+    if (!(await limitByIp(req, res, "lookupAccount", { max: 30, windowSeconds: 3600 }))) return;
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     if (!isValidEmail(email)) {
       res.status(400).json({ error: "invalid-email" });
@@ -98,6 +102,8 @@ export const requestOtp = onRequest(
       res.status(405).json({ error: "method-not-allowed" });
       return;
     }
+    if (!(await requireAppCheck(req, res, "requestOtp"))) return;
+    if (!(await limitByIp(req, res, "requestOtp", { max: 10, windowSeconds: 3600 }))) return;
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     if (!isValidEmail(email)) {
       res.status(400).json({ error: "invalid-email" });
@@ -118,8 +124,6 @@ export const requestOtp = onRequest(
     } catch {
       // No account for this email — not an error, just the new-user path.
     }
-    // TEMP-AUTH-DEBUG: remove before release.
-    console.log(`[auth-debug] requestOtp email=${email} exists=${exists} displayName=${JSON.stringify(lookupDisplayName)} firstName=${JSON.stringify(firstName)}`);
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const pepper = process.env.OTP_PEPPER ?? "";
@@ -156,8 +160,6 @@ export const requestOtp = onRequest(
       });
     } catch (e) {
       if (e instanceof RateLimitedError) {
-        // TEMP-AUTH-DEBUG: remove before release.
-        console.log(`[auth-debug] requestOtp rate-limited email=${email}`);
         res.status(429).json({ error: "rate-limited" });
         return;
       }
@@ -199,6 +201,8 @@ export const verifyOtp = onRequest(
       res.status(405).json({ error: "method-not-allowed" });
       return;
     }
+    if (!(await requireAppCheck(req, res, "verifyOtp"))) return;
+    if (!(await limitByIp(req, res, "verifyOtp", { max: 30, windowSeconds: 3600 }))) return;
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     const code = String(req.body?.code ?? "").trim();
     // Optional "First Last" from the sign-in form; stored as the Firebase displayName
@@ -255,11 +259,8 @@ export const verifyOtp = onRequest(
       });
     }
     // Backfill the name for accounts created before displayName was sent.
-    // TEMP-AUTH-DEBUG: remove before release.
-    console.log(`[auth-debug] verifyOtp email=${email} displayNameReceived=${JSON.stringify(displayName)} existingDisplayName=${JSON.stringify(userRecord.displayName ?? null)}`);
     if (displayName && !userRecord.displayName) {
       userRecord = await auth.updateUser(userRecord.uid, { displayName });
-      console.log(`[auth-debug] verifyOtp backfilled displayName for uid=${userRecord.uid}`);
     }
     const customToken = await auth.createCustomToken(userRecord.uid);
     res.status(200).json({ customToken });

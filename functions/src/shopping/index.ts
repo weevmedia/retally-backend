@@ -17,7 +17,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
-import { REGION } from "../shared/constants";
+import { ENFORCE_APP_CHECK_ON_CALL, REGION } from "../shared/constants";
 import { groupItems } from "./itemGrouping";
 import { loadAliases, nameUnresolved } from "./naming";
 import { PurchaseLine, StoreProfile, buildItemStats, buildStoreProfiles } from "./features";
@@ -279,7 +279,7 @@ async function writeNudges(uid: string, nudges: NudgeDto[], now: Date): Promise<
  * over a day old, or [refresh]. Signed-in users only, like the Smart List.
  */
 export const getNudges = onCall(
-  { region: REGION, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 120, memory: "512MiB" },
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK_ON_CALL, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 120, memory: "512MiB" },
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "sign-in-required");
     if (request.auth.token.firebase?.sign_in_provider === "anonymous") {
@@ -407,7 +407,7 @@ const STALE_FOR_APP_MS = 24 * 3_600_000;
  * Guests (anonymous auth) get `permission-denied` with reason "sign-in-required".
  */
 export const getShoppingList = onCall(
-  { region: REGION, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 120, memory: "512MiB" },
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK_ON_CALL, secrets: ["GEMINI_API_KEY"], timeoutSeconds: 120, memory: "512MiB" },
   async (request) => {
     if (!request.auth) {
       logger.warn("getShoppingList: no auth on request");
