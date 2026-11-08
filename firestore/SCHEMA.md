@@ -274,3 +274,18 @@ install below it is locked to an "Update required" screen until it updates.
 | updatedAt | timestamp | |
 
 Version strings compare numerically part by part (`1.10.0` > `1.9.0`); build suffixes are ignored.
+
+## config/app  (console w via adminSetAppConfig, public r)
+
+Links and feature switches every install reads at launch (cached on the phone, refreshed in the
+background at most every 15 minutes).
+
+| Field | Type | Notes |
+|---|---|---|
+| links.howItWorks | string | https URL; "" = the built-in How it works screen |
+| links.terms | string | https URL; "" = https://retally-c5212.web.app/terms |
+| links.privacy | string | https URL; "" = https://retally-c5212.web.app/privacy |
+| links.support | string | https URL; "" = https://retally-c5212.web.app/support |
+| features.ads | bool | false hides every ad slot; missing = true |
+| features.recalls | bool | false hides More › Food recalls; missing = true |
+| updatedAt / updatedBy | timestamp / string | last console save |

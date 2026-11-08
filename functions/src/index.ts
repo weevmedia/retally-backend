@@ -38,5 +38,6 @@ export {
   adminSaveCategories, adminSearchReceipts, adminSetAdmin, adminSetUserDisabled, adminUpsertStore,
   adminListItemAliases, adminSetItemCategory,
   adminGetAppVersion, adminPreviewAppVersion, adminSetAppVersion,
+  adminGetAppConfig, adminSetAppConfig,
 } from "./admin";
 export { onReceiptWrittenForStores } from "./stores";

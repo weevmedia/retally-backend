@@ -179,6 +179,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    // App config: links and feature switches (ads, recalls) every install reads at launch, so
+    // it is public like appVersion (only URLs and on/off flags). Edited from the console only.
+    match /config/app {
+      allow read: if true;
+      allow write: if false;
+    }
     match /adminAudit/{entryId} {
       allow read: if isAdmin();
       allow write: if false;
