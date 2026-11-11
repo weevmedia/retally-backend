@@ -23,12 +23,19 @@
  * - On success the function mints a Firebase custom token for a uid that is stable per
  *   email (existing Firebase user reused, otherwise created) — receipts stay put.
  *
+ * App-store review account: review@weevmedia.com signs in with the fixed 6-digit code in the
+ * REVIEW_OTP_CODE secret, and no email is sent for it, so Google Play / App Review can sign in
+ * without the inbox. Leave the secret unset (or not 6 digits) to turn it off. App Check and the
+ * per-IP limits still apply; every other email keeps the random, expiring, single-use code.
+ *
  * Secrets (firebase functions:secrets:set):
  *   RESEND_API_KEY  - Resend API key (sign up at resend.com)
  *   OTP_PEPPER      - any long random string, e.g. `openssl rand -hex 32`
+ *   REVIEW_OTP_CODE - 6-digit code for the store-review account (see above)
  */
 
 import { onRequest } from "firebase-functions/v2/https";
+import type { Response } from "express";
 import { requireAppCheck } from "../shared/appCheck";
 import { limitByIp } from "../shared/rateLimit";
 import { getAuth } from "firebase-admin/auth";
@@ -48,6 +55,23 @@ const MAX_ATTEMPTS = 5;
 const MAX_REQUESTS_PER_HOUR = 3;
 // Verified sender domain (weevmedia.com, verified in Resend) — OTP codes can now go to any email.
 const FROM_ADDRESS = "ReTally <noreply@weevmedia.com>";
+
+/** App-store review account (Google Play / App Review). See the file header. */
+const REVIEW_EMAIL = "review@weevmedia.com";
+
+/** The review account is on: the email matches and REVIEW_OTP_CODE holds 6 digits. */
+function isReviewEmail(email: string): boolean {
+  const code = process.env.REVIEW_OTP_CODE ?? "";
+  return email === REVIEW_EMAIL && /^\d{6}$/.test(code);
+}
+
+/** The review account's fixed code, compared in constant time. */
+function isReviewCode(email: string, code: string): boolean {
+  if (!isReviewEmail(email)) return false;
+  const expected = Buffer.from(process.env.REVIEW_OTP_CODE ?? "");
+  const actual = Buffer.from(code);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
 
 interface OtpDoc {
   codeHash: string;
@@ -96,7 +120,7 @@ export const lookupAccount = onRequest(
  * Generates a code, stores only its hash, and emails it via Resend.
  */
 export const requestOtp = onRequest(
-  { region: REGION, secrets: ["RESEND_API_KEY", "OTP_PEPPER"] },
+  { region: REGION, secrets: ["RESEND_API_KEY", "OTP_PEPPER", "REVIEW_OTP_CODE"] },
   async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "method-not-allowed" });
@@ -123,6 +147,12 @@ export const requestOtp = onRequest(
       firstName = (user.displayName ?? "").trim().split(/\s+/)[0] || null;
     } catch {
       // No account for this email — not an error, just the new-user path.
+    }
+
+    // Review account: nothing to generate or send; verifyOtp accepts the fixed code.
+    if (isReviewEmail(email)) {
+      res.status(200).json({ ok: true, exists, firstName });
+      return;
     }
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -195,7 +225,7 @@ export const requestOtp = onRequest(
  * Verifies a code. On success returns a Firebase custom token and burns the code.
  */
 export const verifyOtp = onRequest(
-  { region: REGION, secrets: ["OTP_PEPPER"] },
+  { region: REGION, secrets: ["OTP_PEPPER", "REVIEW_OTP_CODE"] },
   async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "method-not-allowed" });
@@ -210,6 +240,11 @@ export const verifyOtp = onRequest(
     const displayName = String(req.body?.displayName ?? "").trim().slice(0, 100);
     if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
       res.status(400).json({ error: "invalid-request" });
+      return;
+    }
+
+    if (isReviewCode(email, code)) {
+      await signIn(res, email, displayName);
       return;
     }
 
@@ -247,22 +282,30 @@ export const verifyOtp = onRequest(
     // Single-use: burn the code before minting the token.
     await ref.delete();
 
-    const auth = getAuth();
-    let userRecord;
-    try {
-      userRecord = await auth.getUserByEmail(email);
-    } catch {
-      userRecord = await auth.createUser({
-        email,
-        emailVerified: true,
-        displayName: displayName || undefined,
-      });
-    }
-    // Backfill the name for accounts created before displayName was sent.
-    if (displayName && !userRecord.displayName) {
-      userRecord = await auth.updateUser(userRecord.uid, { displayName });
-    }
-    const customToken = await auth.createCustomToken(userRecord.uid);
-    res.status(200).json({ customToken });
+    await signIn(res, email, displayName);
   }
 );
+
+/**
+ * Mints a custom token for the email's Firebase user (reused, or created on first sign-in) and
+ * writes the 200. Shared by the normal code path and the review account.
+ */
+async function signIn(res: Response, email: string, displayName: string): Promise<void> {
+  const auth = getAuth();
+  let userRecord;
+  try {
+    userRecord = await auth.getUserByEmail(email);
+  } catch {
+    userRecord = await auth.createUser({
+      email,
+      emailVerified: true,
+      displayName: displayName || undefined,
+    });
+  }
+  // Backfill the name for accounts created before displayName was sent.
+  if (displayName && !userRecord.displayName) {
+    userRecord = await auth.updateUser(userRecord.uid, { displayName });
+  }
+  const customToken = await auth.createCustomToken(userRecord.uid);
+  res.status(200).json({ customToken });
+}

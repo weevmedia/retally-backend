@@ -41,3 +41,4 @@ export {
   adminGetAppConfig, adminSetAppConfig,
 } from "./admin";
 export { onReceiptWrittenForStores } from "./stores";
+export { deleteAccount, onUserDeleted } from "./accounts";
