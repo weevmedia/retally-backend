@@ -324,6 +324,10 @@ async function deleteShoppingLists(uid: string, keep: Set<string>): Promise<void
 export const onReceiptWrittenForShoppingList = onDocumentWritten(
   { document: "users/{uid}/receipts/{receiptId}", region: REGION },
   async (event) => {
+    // A hard delete only comes from account deletion or a data reset (the app soft-deletes, which
+    // is an update). Marking the list stale then would recreate this user's job doc right after
+    // the cleanup removed it.
+    if (!event.data?.after.exists) return;
     await getFirestore().collection(JOBS).doc(event.params.uid).set(
       { stale: true, staleSince: FieldValue.serverTimestamp() }, { merge: true },
     );
