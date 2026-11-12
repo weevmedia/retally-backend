@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>API · ReTally</title>
+<link rel="icon" href="app-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+<style>
+  /* Swagger UI is light-only, so the page stays light to match it. */
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#0f172a; --muted:#5b6474; --line:#e5e7eb; --brand:#10b981; --brand-ink:#047857; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  header { background:var(--card); border-bottom:1px solid var(--line); }
+  .bar { max-width:1200px; margin:0 auto; padding:14px 16px; display:flex; align-items:center; gap:12px; }
+  .bar img { width:32px; height:32px; border-radius:8px; }
+  .bar strong { font-size:18px; }
+  .bar span { color:var(--muted); font-size:14px; }
+  .bar a { margin-left:auto; color:var(--brand-ink); font-size:14px; text-decoration:none; }
+  #swagger-ui { max-width:1200px; margin:0 auto; padding:0 16px 48px; }
+  /* Brand touches on top of Swagger UI's defaults. */
+  .swagger-ui .topbar { display:none; }
+  .swagger-ui .info .title small.version-stamp { background:var(--brand); }
+  .swagger-ui .opblock-tag { border-bottom-color:var(--line); }
+  .swagger-ui .btn.authorize { color:var(--brand-ink); border-color:var(--brand); }
+  .swagger-ui .btn.authorize svg { fill:var(--brand-ink); }
+  .swagger-ui .scheme-container { box-shadow:none; border:1px solid var(--line); border-radius:12px; margin-top:8px; }
+  .swagger-ui section.models { border-radius:12px; }
+  .loading { color:var(--muted); padding:32px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="app-icon.png" alt="">
+    <strong>ReTally API</strong>
+    <span>Cloud Functions · us-east1</span>
+    <a href="openapi.yaml" download>Download openapi.yaml</a>
+  </div>
+</header>
+<div id="swagger-ui"><p class="loading">Loading the API reference…</p></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js" crossorigin></script>
+<script>
+  window.addEventListener("load", function () {
+    window.ui = SwaggerUIBundle({
+      url: "openapi.yaml",
+      dom_id: "#swagger-ui",
+      deepLinking: true,
+      docExpansion: "list",
+      defaultModelsExpandDepth: 0,
+      filter: true,
+      tryItOutEnabled: false,
+      // Every endpoint needs an App Check token only the apps can mint: no "Try it out".
+      supportedSubmitMethods: [],
+      tagsSorter: function (a, b) {
+        var order = ["Auth", "Account", "Config", "Receipts AI", "Smart List & Nudges", "Recalls",
+          "Admin · Stores", "Admin · Categories", "Admin · App config", "Admin · Users",
+          "Admin · Receipts", "Background jobs"];
+        return order.indexOf(a) - order.indexOf(b);
+      },
+    });
+  });
+</script>
+</body>
+</html>

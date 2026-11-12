@@ -1,0 +1,2213 @@
+openapi: 3.1.0
+info:
+  title: ReTally Backend API
+  version: 1.0.0
+  summary: Cloud Functions behind the ReTally app and the ReTally admin console.
+  description: |
+    Every function runs in **us-east1** on the `retally-c5212` Firebase project.
+
+    ### Two kinds of endpoints
+    - **HTTP functions** (`onRequest`): plain JSON over HTTPS. The body is the payload itself.
+    - **Callable functions** (`onCall`): also `POST` JSON, but wrapped by the Firebase callable
+      protocol. The request is `{ "data": { ... } }` and a success is `{ "result": { ... } }`.
+      Errors come back as `{ "error": { "status": "INVALID_ARGUMENT", "message": "..." } }`.
+      The apps call them through the Firebase SDK (`httpsCallable`), which does the wrapping.
+
+    ### Security
+    - **App Check** is required on every app-facing endpoint (`X-Firebase-AppCheck` header;
+      callables get it from the SDK). Admin callables do not enforce it yet
+      (`ADMIN_ENFORCE_APP_CHECK = false`).
+    - **Firebase ID token** (`Authorization: Bearer <idToken>`) where noted. Guests are anonymous
+      Firebase users; several endpoints reject them with `sign-in-required`.
+    - **Admin callables** additionally need the `admin: true` custom claim on a live, enabled account,
+      and every write is recorded in `/adminAudit`.
+    - **Per-IP rate limits** apply to the sign-in and AI endpoints (noted per operation).
+
+    ### Not callable
+    Scheduled jobs and Firestore / Auth triggers are listed under **Background jobs** for reference;
+    they have no URL.
+
+    "Try it out" is turned off on this page: every endpoint needs an App Check token, which only
+    the real apps can produce.
+  contact:
+    name: Weev Media
+    email: retallyadmin@gmail.com
+servers:
+- url: https://us-east1-retally-c5212.cloudfunctions.net
+  description: Production (us-east1)
+tags:
+- name: Auth
+  description: Email code (OTP) sign-in and Sign in with Apple / Google. All mint a Firebase custom token for one
+    account per email.
+- name: Account
+  description: The signed-in user's own account and devices.
+- name: Config
+  description: Server-driven lists the app reads at launch.
+- name: Receipts AI
+  description: Gemini-backed helpers for scanning and tagging receipts.
+- name: Smart List & Nudges
+  description: AI shopping lists and Home cards built from the user's synced receipts.
+- name: Recalls
+  description: FDA and USDA food recalls, matched to what the user bought.
+- name: Admin · Stores
+  description: Store master list (`store_icons`) for logos and name matching.
+- name: Admin · Categories
+  description: Item categories and the AI's cached per-line answers.
+- name: Admin · App config
+  description: Links, feature switches and the app version gate every install reads.
+- name: Admin · Users
+  description: App users and console admins (Firebase Auth).
+- name: Admin · Receipts
+  description: Read-only receipt search across all users.
+- name: Background jobs
+  description: Schedules and triggers. Listed for reference; they cannot be called.
+paths:
+  /lookupAccount:
+    post:
+      tags:
+      - Auth
+      operationId: lookupAccount
+      summary: Check whether an email has an account (no code sent)
+      description: |
+        Used on the email step so a code is only sent after a new user completes the name form.
+        Rate limit: 30 per hour per IP.
+      security:
+      - appCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailBody'
+      responses:
+        '200':
+          description: Lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountLookup'
+        '400':
+          $ref: '#/components/responses/InvalidEmail'
+        '401':
+          $ref: '#/components/responses/AppCheckFailed'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /requestOtp:
+    post:
+      tags:
+      - Auth
+      operationId: requestOtp
+      summary: Email a 6-digit sign-in code
+      description: |
+        Sends a code (10-minute expiry, single use, 5 verify attempts) and reports whether the email
+        already has an account. Limits: 3 per hour per email, 10 per hour per IP.
+
+        The store-review account `review@weevmedia.com` gets no email; it signs in with the fixed
+        code in the `REVIEW_OTP_CODE` secret.
+      security:
+      - appCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailBody'
+      responses:
+        '200':
+          description: Code sent (or review account)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountLookup'
+        '400':
+          $ref: '#/components/responses/InvalidEmail'
+        '401':
+          $ref: '#/components/responses/AppCheckFailed'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          description: The email provider (Resend) refused the send
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error: send-failed
+  /verifyOtp:
+    post:
+      tags:
+      - Auth
+      operationId: verifyOtp
+      summary: Exchange the emailed code for a Firebase custom token
+      description: |
+        On success the code is burned and a custom token is minted for the account tied to the
+        email (created on first sign-in). The app signs in with `signInWithCustomToken`.
+        Rate limit: 30 per hour per IP.
+      security:
+      - appCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - code
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: shopper@example.com
+                code:
+                  type: string
+                  pattern: ^\d{6}$
+                  example: '482913'
+                displayName:
+                  type: string
+                  maxLength: 100
+                  description: Optional "First Last" from the sign-in form, saved as the Firebase display name.
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomToken'
+        '400':
+          description: Bad email or code format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error: invalid-request
+        '401':
+          description: Wrong code, or App Check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                mismatch:
+                  value:
+                    error: mismatch
+                appCheck:
+                  value:
+                    error: app-check-invalid
+        '404':
+          description: No active code for this email (never requested, already used, or replaced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error: no-code
+        '410':
+          description: The code expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error: expired
+        '429':
+          description: Too many attempts on this code (it is burned), or the IP limit was hit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                attempts:
+                  value:
+                    error: too-many-attempts
+                ip:
+                  value:
+                    error: rate-limited
+  /signInWithProvider:
+    post:
+      tags:
+      - Auth
+      operationId: signInWithProvider
+      summary: Sign in with Apple or Google
+      description: |
+        Verifies the platform ID token (Apple identity token, or Google ID token from Credential
+        Manager / Google Sign-In) and mints a custom token for the same per-email account the
+        email code uses. Google tokens must be issued to a client ID in `GOOGLE_WEB_CLIENT_IDS`.
+        Rate limit: 30 per hour per IP.
+      security:
+      - appCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - provider
+              - idToken
+              properties:
+                provider:
+                  type: string
+                  enum:
+                  - apple
+                  - google
+                idToken:
+                  type: string
+                  description: The provider's signed JWT.
+                nonce:
+                  type: string
+                  description: 'Apple only: the raw nonce whose SHA-256 is in the token.'
+                displayName:
+                  type: string
+                  maxLength: 100
+                  description: Apple only sends the name on first sign-in; pass it through.
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/CustomToken'
+                - type: object
+                  properties:
+                    isNewUser:
+                      type: boolean
+                    firstName:
+                      type:
+                      - string
+                      - 'null'
+        '400':
+          description: Missing provider or token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error: invalid-request
+        '401':
+          description: Token invalid / wrong audience, email not verified, or App Check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                token:
+                  value:
+                    error: invalid-token
+                unverified:
+                  value:
+                    error: email-not-verified
+        '422':
+          description: The token carries no email
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error: no-email
+  /getCategories:
+    get:
+      tags:
+      - Config
+      operationId: getCategories
+      summary: Item categories and tagging keywords
+      description: |
+        From Firestore `config/itemCategories` (edited in the admin console). The first category
+        is the default. Falls back to the built-in list when the doc is missing.
+      security:
+      - appCheck: []
+      responses:
+        '200':
+          description: Category list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/AppCheckFailed'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /getStoreIcons:
+    get:
+      tags:
+      - Config
+      operationId: getStoreIcons
+      summary: Store logos (all, one store, or a batch)
+      description: |
+        - No query: every store that has a logo.
+        - `store`: match one printed store name (aliases included).
+        - `stores` (repeatable, up to 50): batch match.
+
+        Placeholder stores without a logo are never returned, so the app keeps its letter tile.
+      security:
+      - appCheck: []
+      parameters:
+      - name: store
+        in: query
+        schema:
+          type: string
+          maxLength: 128
+        description: A printed store name to match, e.g. `SHAWS
+      - name: stores
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        description: Several printed names; returns `matches` keyed by each name.
+      responses:
+        '200':
+          description: Icons, or the lookup result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  title: All icons
+                  properties:
+                    ok:
+                      type: boolean
+                      const: true
+                    icons:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/StoreIcon'
+                - type: object
+                  title: Single lookup (?store=)
+                  properties:
+                    ok:
+                      type: boolean
+                      const: true
+                    lookup:
+                      type: boolean
+                      const: true
+                    icons:
+                      type: array
+                      maxItems: 0
+                    match:
+                      oneOf:
+                      - $ref: '#/components/schemas/StoreIcon'
+                      - type: 'null'
+                - type: object
+                  title: Batch lookup (?stores=…)
+                  properties:
+                    ok:
+                      type: boolean
+                      const: true
+                    lookup:
+                      type: boolean
+                      const: true
+                    icons:
+                      type: array
+                      maxItems: 0
+                    matches:
+                      type: object
+                      additionalProperties:
+                        oneOf:
+                        - $ref: '#/components/schemas/StoreIcon'
+                        - type: 'null'
+        '401':
+          $ref: '#/components/responses/AppCheckFailed'
+        '503':
+          description: The lookup failed (Firestore unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                ok: false
+                error: lookup-failed
+  /parseTornReceipt:
+    post:
+      tags:
+      - Receipts AI
+      operationId: parseTornReceipt
+      summary: Read a damaged receipt photo with Gemini
+      description: |
+        Second pass when on-device OCR couldn't read a receipt. Returns structured fields with a
+        per-field confidence; the app badges values below 1.0 as estimated.
+        Signed-in (non-guest) users only. Rate limit: 60 per hour per IP.
+      security:
+      - appCheck: []
+        firebaseIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - imageBase64
+              properties:
+                imageBase64:
+                  type: string
+                  contentEncoding: base64
+                  description: The receipt photo.
+                mimeType:
+                  type: string
+                  default: image/jpeg
+                  example: image/jpeg
+      responses:
+        '200':
+          description: Parsed receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  receipt:
+                    $ref: '#/components/schemas/TornReceipt'
+        '400':
+          description: Missing or oversized image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                missing:
+                  value:
+                    ok: false
+                    error: missing-image
+        '401':
+          description: No / invalid ID token, or App Check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                none:
+                  value:
+                    ok: false
+                    error: unauthorized
+                invalid:
+                  value:
+                    ok: false
+                    error: invalid-token
+        '403':
+          description: Guests (anonymous) can't use it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                ok: false
+                error: sign-in-required
+        '413':
+          description: Image too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                ok: false
+                error: image-too-large
+        '502':
+          description: Gemini failed or returned unusable output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              examples:
+                gemini:
+                  value:
+                    ok: false
+                    error: gemini-error
+                    status: 503
+                empty:
+                  value:
+                    ok: false
+                    error: empty-response
+                json:
+                  value:
+                    ok: false
+                    error: invalid-json
+  /categorizeItems:
+    post:
+      tags:
+      - Receipts AI
+      operationId: categorizeItems
+      summary: Callable · AI category per receipt line
+      description: |
+        Classifies each distinct line once with Gemini and caches it in `/itemAliases` for every
+        user. Lines the shopper re-categorised by hand are not sent. Up to 120 lines per call.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `items` | string[] (each up to 200 chars, max 120) |
+        | `store` | string, optional: helps the AI |
+      security:
+      - appCheck: []
+        firebaseIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                store: SHAWS
+                items:
+                - TIDE PDS 42CT
+                - BANANAS
+      responses:
+        '200':
+          description: '`result.categories` maps each sent line to a category id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallableResult'
+              example:
+                result:
+                  categories:
+                    TIDE PDS 42CT: household
+                    BANANAS: grocery
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        items: string[] (each up to 200 chars, max 120)
+        store: 'string, optional: helps the AI'
+      x-category-ids:
+      - grocery
+      - household
+      - personal_care
+      - health
+      - baby
+      - pet
+      - alcohol
+      - electronics
+      - clothing
+      - home
+      - other
+  /registerDevice:
+    post:
+      tags:
+      - Account
+      operationId: registerDevice
+      summary: Callable · Record this install on the user's device list
+      description: |
+        Called after sign-in (guests too) and at most daily after that. One install belongs to one
+        account: signing into another account on the same phone moves the device.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `installationId` | string, 8-64 chars [A-Za-z0-9_-] (Firebase Installations ID) |
+        | `platform` | android | ios |
+        | `model` | string ≤ 80, optional |
+        | `osVersion` | string ≤ 40, optional |
+        | `appVersion` | string ≤ 40, optional |
+      security:
+      - appCheck: []
+        firebaseIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                installationId: fK3x9_aPq2Lm
+                platform: android
+                model: Pixel 8
+                osVersion: '15'
+                appVersion: 1.0.0
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallableResult'
+              example:
+                result:
+                  ok: true
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        installationId: string, 8-64 chars [A-Za-z0-9_-] (Firebase Installations ID)
+        platform: android | ios
+        model: string ≤ 80, optional
+        osVersion: string ≤ 40, optional
+        appVersion: string ≤ 40, optional
+  /deleteAccount:
+    post:
+      tags:
+      - Account
+      operationId: deleteAccount
+      summary: Callable · Delete the caller's own account
+      description: |
+        Deletes the Firebase Auth user (no recent sign-in needed). That fires `onUserDeleted`,
+        which removes all of the user's data. The app then signs out.
+      security:
+      - appCheck: []
+        firebaseIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data: {}
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallableResult'
+              example:
+                result:
+                  ok: true
+        default:
+          $ref: '#/components/responses/CallableError'
+  /getShoppingList:
+    post:
+      tags:
+      - Smart List & Nudges
+      operationId: getShoppingList
+      summary: Callable · AI shopping lists per store
+      description: |
+        Returns the saved lists, rebuilding first when there are none, they're over a day old, or
+        `storeName` has no list yet. `refresh: true` rebuilds now. Guests get
+        `PERMISSION_DENIED` / `sign-in-required`.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `storeName` | string, optional: build/return this store's list |
+        | `refresh` | boolean, optional |
+      security:
+      - appCheck: []
+        firebaseIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                storeName: SHAWS
+                refresh: false
+      responses:
+        '200':
+          description: '`result: { status, lists }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - ok
+                        - guest
+                        - no-history
+                      lists:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ShoppingList'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        storeName: 'string, optional: build/return this store''s list'
+        refresh: boolean, optional
+  /getNudges:
+    post:
+      tags:
+      - Smart List & Nudges
+      operationId: getNudges
+      summary: Callable · Home insight cards
+      description: |
+        Saved nudges plus today's price drops, highest priority first. Rebuilt with the lists when
+        missing, over a day old, or `refresh: true`. Signed-in users only.
+      security:
+      - appCheck: []
+        firebaseIdToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                refresh: false
+      responses:
+        '200':
+          description: '`result: { status, nudges, generatedAt }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - ok
+                        - guest
+                        - no-history
+                      nudges:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Nudge'
+                      generatedAt:
+                        type:
+                        - string
+                        - 'null'
+                        format: date-time
+        default:
+          $ref: '#/components/responses/CallableError'
+  /getRecalls:
+    post:
+      tags:
+      - Recalls
+      operationId: getRecalls
+      summary: Callable · Latest FDA + USDA food recalls
+      description: |
+        Fetched live (cached in memory up to 6 hours; `refresh` forces a refetch at most every
+        30 minutes). For signed-in users each recall that mentions something they bought recently
+        carries a `match`. Guests get the list without matches.
+      security:
+      - appCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                refresh: false
+      responses:
+        '200':
+          description: '`result: { signedIn, recalls, matchedCount }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      signedIn:
+                        type: boolean
+                      matchedCount:
+                        type: integer
+                      recalls:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Recall'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminUpsertStore:
+    post:
+      tags:
+      - Admin · Stores
+      operationId: adminUpsertStore
+      summary: Callable · Create or update a store
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              example:
+                result:
+                  ok: true
+                  key: shaws
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        key: string ≤ 64 (store key)
+        name: string ≤ 64
+        iconUrl: string (logo URL)
+        weeklyAdUrl: https URL or "" to clear
+        aliases: string[] (other printed names)
+        category: string ≤ 32 or null
+        isNew: 'boolean: true when creating'
+      description: |
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `key` | string ≤ 64 (store key) |
+        | `name` | string ≤ 64 |
+        | `iconUrl` | string (logo URL) |
+        | `weeklyAdUrl` | https URL or "" to clear |
+        | `aliases` | string[] (other printed names) |
+        | `category` | string ≤ 32 or null |
+        | `isNew` | boolean: true when creating |
+  /adminMergeStore:
+    post:
+      tags:
+      - Admin · Stores
+      operationId: adminMergeStore
+      summary: Callable · Fold one store into another
+      description: |
+        The source's name and aliases become aliases of the target, receipt counts add up, and the source is deleted.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `fromKey` | string ≤ 64 |
+        | `intoKey` | string ≤ 64 |
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          $ref: '#/components/responses/CallableOk'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        fromKey: string ≤ 64
+        intoKey: string ≤ 64
+  /adminDeleteStore:
+    post:
+      tags:
+      - Admin · Stores
+      operationId: adminDeleteStore
+      summary: Callable · Delete a store
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          $ref: '#/components/responses/CallableOk'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        key: string ≤ 64 (NOT_FOUND when missing)
+      description: |
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `key` | string ≤ 64 (NOT_FOUND when missing) |
+  /adminDiscoverStores:
+    post:
+      tags:
+      - Admin · Stores
+      operationId: adminDiscoverStores
+      summary: Callable · Backfill stores from every receipt
+      description: Creates `new` placeholders for unknown store names and recounts `stats.receiptCount`. Up to 5
+        minutes.
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: Scan summary
+          content:
+            application/json:
+              example:
+                result:
+                  ok: true
+                  scanned: 1840
+                  created: 6
+                  updated: 41
+                  skipped: 3
+                  truncated: false
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminSaveCategories:
+    post:
+      tags:
+      - Admin · Categories
+      operationId: adminSaveCategories
+      summary: Callable · Replace the item category list
+      description: Order matters, because the first category is the app's default. Writes `config/itemCategories`.
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                categories:
+                - id: grocery
+                  name: Grocery
+                  keywords: []
+                - id: household
+                  name: Household
+                  keywords:
+                  - paper towel
+                  - detergent
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              example:
+                result:
+                  ok: true
+                  count: 2
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminListItemAliases:
+    post:
+      tags:
+      - Admin · Categories
+      operationId: adminListItemAliases
+      summary: Callable · Browse the AI's cached line categories
+      description: |
+        `search` is a case-insensitive prefix; `category` filters by AI category; neither = most recent first. Paged with the opaque `next` cursor.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `search` | string ≤ 100, optional |
+        | `category` | category id, optional |
+        | `after` | cursor from the previous page, optional |
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: '`result: { rows, next }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      rows:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ItemAlias'
+                      next:
+                        type:
+                        - string
+                        - 'null'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        search: string ≤ 100, optional
+        category: category id, optional
+        after: cursor from the previous page, optional
+  /adminSetItemCategory:
+    post:
+      tags:
+      - Admin · Categories
+      operationId: adminSetItemCategory
+      summary: Callable · Override the AI's category for one receipt text
+      description: |
+        The override wins for every user from then on.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `raw` | string ≤ 200 (receipt text) |
+        | `category` | category id |
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          $ref: '#/components/responses/CallableOk'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        raw: string ≤ 200 (receipt text)
+        category: category id
+  /adminGetAppConfig:
+    post:
+      tags:
+      - Admin · App config
+      operationId: adminGetAppConfig
+      summary: Callable · Read links and feature switches
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: '`result: { config, defaults, updatedAt, updatedBy }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      config:
+                        $ref: '#/components/schemas/AppConfig'
+                      defaults:
+                        $ref: '#/components/schemas/AppConfig'
+                      updatedAt:
+                        type:
+                        - string
+                        - 'null'
+                        format: date-time
+                      updatedBy:
+                        type:
+                        - string
+                        - 'null'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminSetAppConfig:
+    post:
+      tags:
+      - Admin · App config
+      operationId: adminSetAppConfig
+      summary: Callable · Replace links and feature switches
+      description: Links must be https or blank (blank = the app's built-in default). Writes `config/app`.
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: '#/components/schemas/AppConfig'
+      responses:
+        '200':
+          $ref: '#/components/responses/CallableOk'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminGetAppVersion:
+    post:
+      tags:
+      - Admin · App config
+      operationId: adminGetAppVersion
+      summary: Callable · Read the app version gate
+      description: Also returns, per platform, how many installs seen in the last 30 days are below `minSupported`.
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: '`result: { config, lockedOut, updatedAt, updatedBy }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      config:
+                        $ref: '#/components/schemas/AppVersionGate'
+                      lockedOut:
+                        $ref: '#/components/schemas/LockedOut'
+                      updatedAt:
+                        type:
+                        - string
+                        - 'null'
+                        format: date-time
+                      updatedBy:
+                        type:
+                        - string
+                        - 'null'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminPreviewAppVersion:
+    post:
+      tags:
+      - Admin · App config
+      operationId: adminPreviewAppVersion
+      summary: Callable · Dry-run a version gate
+      description: Validates a proposed gate and reports how many recent installs each platform would lock out.
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: '#/components/schemas/AppVersionGate'
+      responses:
+        '200':
+          description: '`result: { lockedOut }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      lockedOut:
+                        $ref: '#/components/schemas/LockedOut'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminSetAppVersion:
+    post:
+      tags:
+      - Admin · App config
+      operationId: adminSetAppVersion
+      summary: Callable · Replace the app version gate
+      description: '`minSupported` can''t be above `latest`. Writes `config/appVersion`, which every install reads
+        at launch.'
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: '#/components/schemas/AppVersionGate'
+      responses:
+        '200':
+          $ref: '#/components/responses/CallableOk'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminListUsers:
+    post:
+      tags:
+      - Admin · Users
+      operationId: adminListUsers
+      summary: Callable · Every account with admin flag, stats and devices
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: '`result: { users, truncated, you }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      truncated:
+                        type: boolean
+                      you:
+                        type: string
+                        description: The caller's uid.
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminSetUserDisabled:
+    post:
+      tags:
+      - Admin · Users
+      operationId: adminSetUserDisabled
+      summary: Callable · Enable or disable an account
+      description: |
+        Disabling also revokes refresh tokens (signed out within the hour). You can't disable yourself or the last enabled admin.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `uid` | string |
+        | `disabled` | boolean |
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: '`result: { ok, user }`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResult'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        uid: string
+        disabled: boolean
+  /adminSetAdmin:
+    post:
+      tags:
+      - Admin · Users
+      operationId: adminSetAdmin
+      summary: Callable · Grant or revoke console access
+      description: |
+        Sets the `admin` custom claim. You can't demote yourself or the last admin; guests can't be made admins.
+
+        **Input (`data`)**
+
+        | Field | Type / notes |
+        |---|---|
+        | `uid` | string |
+        | `admin` | boolean |
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        $ref: '#/components/requestBodies/Callable'
+      responses:
+        '200':
+          description: '`result: { ok, user }`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResult'
+        default:
+          $ref: '#/components/responses/CallableError'
+      x-callable-data:
+        uid: string
+        admin: boolean
+  /adminInviteAdmin:
+    post:
+      tags:
+      - Admin · Users
+      operationId: adminInviteAdmin
+      summary: Callable · Make an email an admin
+      description: Grants the claim to an existing account, or creates one and returns a set-password link to share
+        yourself (it is not emailed).
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                email: new.admin@example.com
+      responses:
+        '200':
+          description: '`result: { ok, created, passwordLink, user }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      ok:
+                        type: boolean
+                      created:
+                        type: boolean
+                      passwordLink:
+                        type:
+                        - string
+                        - 'null'
+                        format: uri
+                      user:
+                        $ref: '#/components/schemas/User'
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminSearchReceipts:
+    post:
+      tags:
+      - Admin · Receipts
+      operationId: adminSearchReceipts
+      summary: Callable · Search receipts across all users
+      description: |
+        Filters, sort, summary and paging run in memory over at most SCAN_LIMIT receipts
+        (`truncated` says when the limit was hit). OCR text and embeddings are never returned.
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    filters:
+                      $ref: '#/components/schemas/ReceiptFilters'
+                    sortField:
+                      type: string
+                      enum:
+                      - date
+                      - total
+                      - store
+                      - items
+                      - overcharge
+                      - user
+                      default: date
+                    sortDir:
+                      type: string
+                      enum:
+                      - asc
+                      - desc
+                      default: desc
+                    page:
+                      type: integer
+                      minimum: 0
+                      default: 0
+                    pageSize:
+                      type: integer
+                      minimum: 1
+                      default: 25
+      responses:
+        '200':
+          description: '`result: { rows, total, scanned, truncated, summary, facets, userNotFound? }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      rows:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ReceiptRow'
+                      total:
+                        type: integer
+                      scanned:
+                        type: integer
+                      truncated:
+                        type: boolean
+                      summary:
+                        $ref: '#/components/schemas/ReceiptSummary'
+                      facets:
+                        type: object
+                        properties:
+                          sources:
+                            type: array
+                            items:
+                              type: string
+                          paymentMethods:
+                            type: array
+                            items:
+                              type: string
+                          currencies:
+                            type: array
+                            items:
+                              type: string
+                          categories:
+                            type: array
+                            items:
+                              type: string
+                          flags:
+                            type: array
+                            items:
+                              type: string
+                      userNotFound:
+                        type: boolean
+        default:
+          $ref: '#/components/responses/CallableError'
+  /adminGetReceipt:
+    post:
+      tags:
+      - Admin · Receipts
+      operationId: adminGetReceipt
+      summary: Callable · One receipt with its line items and owner
+      security:
+      - firebaseIdToken: []
+        adminClaim: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallableRequest'
+            example:
+              data:
+                uid: lrlkHBrBUiOjk7TKw0Ur0RukSGA3
+                receiptId: oqp0be7r36mi68bd
+      responses:
+        '200':
+          description: '`result: { uid, id, email, anonymous, imagePath, imageUrl, receipt, lineItems }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      uid:
+                        type: string
+                      id:
+                        type: string
+                      email:
+                        type:
+                        - string
+                        - 'null'
+                      anonymous:
+                        type:
+                        - boolean
+                        - 'null'
+                      imagePath:
+                        type:
+                        - string
+                        - 'null'
+                      imageUrl:
+                        type:
+                        - string
+                        - 'null'
+                        format: uri
+                      receipt:
+                        type: object
+                        description: The Firestore receipt document (timestamps as ISO strings).
+                      lineItems:
+                        type: array
+                        items:
+                          type: object
+        default:
+          $ref: '#/components/responses/CallableError'
+  /_jobs/processShoppingLists:
+    get:
+      tags:
+      - Background jobs
+      operationId: processShoppingLists
+      summary: Schedule · every 15 minutes
+      description: Rebuilds stale Smart Lists (debounced after new receipts) and does the 7 am local refresh. **Not
+        an HTTP endpoint.**
+      security: []
+      responses:
+        default:
+          description: Not callable
+  /_jobs/processPriceDrops:
+    get:
+      tags:
+      - Background jobs
+      operationId: processPriceDrops
+      summary: Schedule · daily 05:30 America/New_York
+      description: Scans 30 days of receipts across users for items now cheaper at the same chain and saves `users/{uid}/insights/priceDrops`.
+        **Not an HTTP endpoint.**
+      security: []
+      responses:
+        default:
+          description: Not callable
+  /_jobs/onReceiptWrittenForShoppingList:
+    get:
+      tags:
+      - Background jobs
+      operationId: onReceiptWrittenForShoppingList
+      summary: Firestore trigger · users/{uid}/receipts/{receiptId} written
+      description: Marks the user's Smart List stale so the next schedule run rebuilds it. **Not an HTTP endpoint.**
+      security: []
+      responses:
+        default:
+          description: Not callable
+  /_jobs/onReceiptWrittenForStores:
+    get:
+      tags:
+      - Background jobs
+      operationId: onReceiptWrittenForStores
+      summary: Firestore trigger · users/{uid}/receipts/{receiptId} written
+      description: Matches the receipt's store to `store_icons` (creating a `new` placeholder when unknown) and
+        updates its stats. **Not an HTTP endpoint.**
+      security: []
+      responses:
+        default:
+          description: Not callable
+  /_jobs/onUserDeleted:
+    get:
+      tags:
+      - Background jobs
+      operationId: onUserDeleted
+      summary: Auth trigger (v1) · user deleted
+      description: |
+        Removes `users/{uid}` and every subcollection, `accounts/{uid}`, the pending OTP doc, the
+        `deviceOwners` entries and Storage `users/{uid}/`. Idempotent. **Not an HTTP endpoint.**
+      security: []
+      responses:
+        default:
+          description: Not callable
+components:
+  securitySchemes:
+    appCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+      description: Firebase App Check token (Play Integrity / App Attest / debug provider). Sent automatically by
+        the SDK for callables.
+    firebaseIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+      description: '`Authorization: Bearer <Firebase ID token>`. Callables get it from the SDK.'
+    adminClaim:
+      type: http
+      scheme: bearer
+      bearerFormat: 'Firebase ID token with admin: true claim'
+      description: 'An ID token whose account holds the `admin: true` custom claim and is enabled.'
+  requestBodies:
+    Callable:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CallableRequest'
+  responses:
+    MethodNotAllowed:
+      description: Wrong HTTP method
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error: method-not-allowed
+    InvalidEmail:
+      description: The email is missing or malformed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error: invalid-email
+    AppCheckFailed:
+      description: App Check token missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          examples:
+            missing:
+              value:
+                error: app-check-required
+            invalid:
+              value:
+                error: app-check-invalid
+    RateLimited:
+      description: Too many requests (per email or per IP)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error: rate-limited
+    CallableOk:
+      description: Done
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CallableResult'
+          example:
+            result:
+              ok: true
+    CallableError:
+      description: |
+        Callable error. `status` is the Firebase error code:
+        `UNAUTHENTICATED` (no token / App Check), `PERMISSION_DENIED` (guest or not admin),
+        `INVALID_ARGUMENT`, `NOT_FOUND`, `INTERNAL`.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: PERMISSION_DENIED
+                  message:
+                    type: string
+                    example: sign-in-required
+  schemas:
+    HttpError:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          type: string
+          description: Machine-readable reason.
+        status:
+          type: integer
+          description: 'parseTornReceipt only: Gemini''s HTTP status.'
+      required:
+      - error
+    CallableRequest:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: object
+          description: The callable's input. See the example and `x-callable-data`.
+    CallableResult:
+      type: object
+      properties:
+        result:
+          type: object
+    EmailBody:
+      type: object
+      required:
+      - email
+      properties:
+        email:
+          type: string
+          format: email
+          example: shopper@example.com
+    AccountLookup:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          const: true
+        exists:
+          type: boolean
+          description: The email already has an account.
+        firstName:
+          type:
+          - string
+          - 'null'
+          description: For the "Welcome back" greeting.
+    CustomToken:
+      type: object
+      properties:
+        customToken:
+          type: string
+          description: Pass to signInWithCustomToken.
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          example: household
+        name:
+          type: string
+          example: Household
+        keywords:
+          type: array
+          items:
+            type: string
+    StoreIcon:
+      type: object
+      properties:
+        key:
+          type: string
+          example: shaws
+        name:
+          type: string
+          example: Shaw's
+        iconUrl:
+          type: string
+          format: uri
+    TornReceipt:
+      type: object
+      properties:
+        storeName:
+          type:
+          - string
+          - 'null'
+        storeNameConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        purchaseDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        purchaseDateConfidence:
+          type: number
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              itemNumber:
+                type:
+                - string
+                - 'null'
+                description: UPC / item number printed on the line.
+              price:
+                type: number
+              confidence:
+                type: number
+        subtotal:
+          type:
+          - number
+          - 'null'
+        subtotalConfidence:
+          type: number
+        tax:
+          type:
+          - number
+          - 'null'
+        taxConfidence:
+          type: number
+        total:
+          type:
+          - number
+          - 'null'
+        totalConfidence:
+          type: number
+    ShoppingList:
+      type: object
+      properties:
+        insightId:
+          type: string
+        storeKey:
+          type: string
+        storeName:
+          type: string
+        dueHere:
+          type: array
+          items:
+            type: object
+            properties:
+              item:
+                type: string
+              reason:
+                type: string
+              confidence:
+                type: number
+        alsoHere:
+          type: array
+          items:
+            type: object
+            properties:
+              item:
+                type: string
+              usualStore:
+                type: string
+              reason:
+                type: string
+              confidence:
+                type: number
+        frequent:
+          type: array
+          items:
+            type: object
+            properties:
+              item:
+                type: string
+              reason:
+                type: string
+        usualShoppingDay:
+          type:
+          - string
+          - 'null'
+        decidedBy:
+          type: string
+          enum:
+          - gemini
+          - fallback
+        rank:
+          type: integer
+        generatedAt:
+          type: string
+          format: date-time
+    Nudge:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Stable while the same fact holds.
+        kind:
+          type: string
+          examples:
+          - cheaper_elsewhere
+          - price_creep
+          - running_low
+        title:
+          type: string
+        body:
+          type: string
+        highlight:
+          type:
+          - string
+          - 'null'
+          example: $1.80 cheaper
+        priority:
+          type: number
+        action:
+          oneOf:
+          - type: 'null'
+          - type: object
+            properties:
+              type:
+                type: string
+                enum:
+                - shopping_list
+                - receipt
+                - budget
+              storeName:
+                type: string
+              receiptId:
+                type: string
+    Recall:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+          enum:
+          - FDA
+          - USDA
+        title:
+          type: string
+        excerpt:
+          type: string
+        url:
+          type: string
+          format: uri
+        publishedAt:
+          type: string
+          format: date-time
+        classification:
+          type:
+          - string
+          - 'null'
+        match:
+          oneOf:
+          - type: 'null'
+          - type: object
+            properties:
+              item:
+                type: string
+              lastBought:
+                type: string
+                format: date
+    ItemAlias:
+      type: object
+      properties:
+        raw:
+          type: string
+        name:
+          type:
+          - string
+          - 'null'
+        category:
+          type:
+          - string
+          - 'null'
+        overridden:
+          type: boolean
+        overriddenBy:
+          type:
+          - string
+          - 'null'
+    AppConfig:
+      type: object
+      properties:
+        links:
+          type: object
+          description: '"" = the app''s built-in default'
+          properties:
+            howItWorks:
+              type: string
+            terms:
+              type: string
+            privacy:
+              type: string
+            support:
+              type: string
+        features:
+          type: object
+          description: Missing = on
+          properties:
+            ads:
+              type: boolean
+            recalls:
+              type: boolean
+    PlatformVersion:
+      type: object
+      properties:
+        latest:
+          type: string
+          example: 1.0.0
+        minSupported:
+          type: string
+          example: 1.0.0
+        storeUrl:
+          type: string
+          format: uri
+        message:
+          type: string
+          maxLength: 160
+    AppVersionGate:
+      type: object
+      properties:
+        android:
+          $ref: '#/components/schemas/PlatformVersion'
+        ios:
+          $ref: '#/components/schemas/PlatformVersion'
+    LockedOut:
+      type: object
+      properties:
+        android:
+          type: integer
+        ios:
+          type: integer
+    User:
+      type: object
+      properties:
+        uid:
+          type: string
+        email:
+          type:
+          - string
+          - 'null'
+        displayName:
+          type:
+          - string
+          - 'null'
+        photoUrl:
+          type:
+          - string
+          - 'null'
+        providers:
+          type: array
+          items:
+            type: string
+        anonymous:
+          type: boolean
+        disabled:
+          type: boolean
+        isAdmin:
+          type: boolean
+        emailVerified:
+          type: boolean
+        createdAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        lastSignInAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        lastActiveAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        receiptCount:
+          type:
+          - integer
+          - 'null'
+        lastReceiptAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        devices:
+          type: array
+          items:
+            type: object
+    UserResult:
+      type: object
+      properties:
+        result:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            user:
+              $ref: '#/components/schemas/User'
+    ReceiptFilters:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        text:
+          type: string
+        searchOcr:
+          type: boolean
+        user:
+          type: string
+          description: Email or uid.
+        store:
+          type: string
+        minTotal:
+          type: number
+        maxTotal:
+          type: number
+        minItems:
+          type: number
+        maxItems:
+          type: number
+        sources:
+          type: array
+          items:
+            type: string
+        paymentMethods:
+          type: array
+          items:
+            type: string
+        currencies:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        issues:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+          - active
+          - deleted
+          - all
+          default: active
+        hasImage:
+          type: string
+          enum:
+          - any
+          - 'yes'
+          - 'no'
+          default: any
+    ReceiptRow:
+      type: object
+      properties:
+        uid:
+          type: string
+        id:
+          type: string
+        storeName:
+          type: string
+        merchantId:
+          type:
+          - string
+          - 'null'
+        purchaseDate:
+          type:
+          - string
+          - 'null'
+        currency:
+          type: string
+        subtotal:
+          type:
+          - number
+          - 'null'
+        tax:
+          type:
+          - number
+          - 'null'
+        total:
+          type:
+          - number
+          - 'null'
+        lineItemCount:
+          type:
+          - number
+          - 'null'
+        paymentMethod:
+          type: string
+        source:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        deleted:
+          type: boolean
+        createdAt:
+          type:
+          - string
+          - 'null'
+    ReceiptSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+        users:
+          type: integer
+        stores:
+          type: integer
+        items:
+          type: integer
+        spentByCurrency:
+          type: object
+          additionalProperties:
+            type: number
+        overchargeByCurrency:
+          type: object
+          additionalProperties:
+            type: number
+        withDuplicates:
+          type: integer
+        withIssues:
+          type: integer
+        deleted:
+          type: integer
+        undated:
+          type: integer
